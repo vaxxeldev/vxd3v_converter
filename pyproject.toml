@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vxd3v-converter"
+version = "0.1.0"
+description = "Quality-first Telegram premium emoji and sticker converter"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "aiogram==3.29.0",
+  "aiosqlite==0.22.1",
+  "pydantic-settings==2.14.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "Pillow==12.3.0",
+  "pytest==9.1.1",
+  "pytest-asyncio==1.4.0",
+  "ruff==0.15.20",
+]
+
+[project.scripts]
+vxd3v-bot = "app.main:run"
+vxd3v-render = "app.cli:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = ["integration: requires native renderer and FFmpeg"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "S"]
+ignore = ["S101"]
+
