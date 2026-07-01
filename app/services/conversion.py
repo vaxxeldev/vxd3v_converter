@@ -100,7 +100,9 @@ class ConversionService:
             async with self._gate.acquire(user_settings.user_id):
                 assets = await self._prepare_assets(user_settings, sources, render_dir)
                 background = await self._prepare_background(user_settings, render_dir)
-                output_suffix = ".gif" if user_settings.output_format is OutputFormat.GIF else ".mp4"
+                output_suffix = (
+                    ".gif" if user_settings.output_format is OutputFormat.GIF else ".mp4"
+                )
                 output = render_dir / f"result{output_suffix}"
                 request = RenderRequest(
                     settings=user_settings,

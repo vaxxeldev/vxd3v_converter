@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 from functools import lru_cache
 from pathlib import Path
 
@@ -18,7 +19,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("BOT_TOKEN", "TELEGRAM_BOT_TOKEN", "API_TOKEN")
     )
     database_path: Path = Path("/app/data/bot.sqlite3")
-    temp_root: Path = Path("/tmp/vxd3v-converter")
+    temp_root: Path = Path(tempfile.gettempdir()) / "vxd3v-converter"
     cache_root: Path = Path("/app/data/cache")
     ffmpeg_bin: str = "ffmpeg"
     ffprobe_bin: str = "ffprobe"

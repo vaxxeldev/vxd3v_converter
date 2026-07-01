@@ -19,3 +19,10 @@
 - Added 60 FPS alpha-aware composition, premium effects, adaptive recoloring,
   custom backgrounds and watermark positioning.
 - Added H.264 High/BT.709 export profiles matching the supplied reference contract.
+
+## 2026-07-02 — Persistent Telegram workflow
+
+- Added durable SQLite user settings and pending input state.
+- Added Aiogram menus for canvas, output, background, emoji color, size and watermark.
+- Added direct extraction of premium custom emoji, stickers and public sticker-set links.
+- Added output delivery as Telegram animation, video, high-quality file or real GIF.
