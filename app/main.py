@@ -30,6 +30,8 @@ def _configure_logging(settings: Settings) -> None:
 async def main() -> None:
     settings = get_settings()
     _configure_logging(settings)
+    if settings.bot_token is None:
+        raise RuntimeError("BOT_TOKEN is required")
     bot = Bot(
         token=settings.bot_token.get_secret_value(),
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),

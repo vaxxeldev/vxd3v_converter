@@ -26,3 +26,10 @@
 - Added Aiogram menus for canvas, output, background, emoji color, size and watermark.
 - Added direct extraction of premium custom emoji, stickers and public sticker-set links.
 - Added output delivery as Telegram animation, video, high-quality file or real GIF.
+
+## 2026-07-02 — Bothost PRO packaging
+
+- Added a multi-stage Debian image that keeps compilers out of production.
+- Installed the application and native renderer outside Bothost's `/app` source mount.
+- Added a privilege-dropping entrypoint while retaining writable `/app/data` volumes.
+- Added a Telegram-independent CLI for deterministic renderer checks.

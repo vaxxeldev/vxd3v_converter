@@ -15,7 +15,8 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    bot_token: SecretStr = Field(
+    bot_token: SecretStr | None = Field(
+        default=None,
         validation_alias=AliasChoices("BOT_TOKEN", "TELEGRAM_BOT_TOKEN", "API_TOKEN")
     )
     database_path: Path = Path("/app/data/bot.sqlite3")
