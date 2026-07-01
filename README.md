@@ -17,6 +17,9 @@ under `/usr/local`, while persistent SQLite data and render cache live in
 
 The default process uses long polling and does not require a public port.
 
+Required Bothost environment variable: `BOT_TOKEN`. Optional tuning variables
+are documented in `.env.example`; persistent state requires no external database.
+
 ## Local renderer
 
 Inside the Linux container, a sticker can be rendered without Telegram:
@@ -24,3 +27,12 @@ Inside the Linux container, a sticker can be rendered without Telegram:
 ```text
 vxd3v-render sticker.tgs result.mp4 --format file --background #F74539
 ```
+
+## Verification
+
+```text
+python -m pytest -ra
+```
+
+The integration test uses the local `vxd3v-converter:local` image when it is
+available and verifies both the reference video metadata and actual frame motion.

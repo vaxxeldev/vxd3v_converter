@@ -33,3 +33,10 @@
 - Installed the application and native renderer outside Bothost's `/app` source mount.
 - Added a privilege-dropping entrypoint while retaining writable `/app/data` volumes.
 - Added a Telegram-independent CLI for deterministic renderer checks.
+
+## 2026-07-02 — Quality gate
+
+- Added 26 tests for validation, layout, persistence, queueing, keyboards and export commands.
+- Added a production-container integration render from a moving 60 FPS TGS fixture.
+- Verified 1920×530, H.264 High, yuv420p, 180 frames and complete BT.709 VUI metadata.
+- Verified at least 170 unique decoded frames, preventing static-frame false positives.
