@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     )
     database_path: Path = Path("/app/data/bot.sqlite3")
     temp_root: Path = Path("/tmp/vxd3v-converter")
+    cache_root: Path = Path("/app/data/cache")
     ffmpeg_bin: str = "ffmpeg"
     ffprobe_bin: str = "ffprobe"
     rlottie_renderer_bin: str = "/usr/local/bin/tgs-renderer"
@@ -29,6 +30,7 @@ class Settings(BaseSettings):
     max_render_seconds: int = Field(default=120, ge=10, le=600)
     max_concurrent_renders: int = Field(default=1, ge=1, le=8)
     max_queue_size: int = Field(default=20, ge=1, le=500)
+    max_cache_bytes: int = Field(default=512 * 1024 * 1024, ge=16 * 1024 * 1024)
     enable_custom_button_emoji: bool = False
 
     @field_validator("log_level")
@@ -43,4 +45,3 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]
-
