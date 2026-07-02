@@ -52,6 +52,10 @@ def test_premium_text_has_plain_fallback() -> None:
     assert "<tg-emoji emoji-id=" not in plain
     assert "VXD3V CONVERTER" in premium
     assert "VXD3V CONVERTER" in plain
+    assert premium.count("<blockquote>") == 2
+    assert "Создавай пиздатое оформления для ботов, каналов и сайтов." in premium
+    assert "<b>Отправь мне:</b>" in premium
+    assert "<b>Конфигурация:</b>" in premium
 
 
 def test_cancel_button_is_red_and_has_premium_icon() -> None:

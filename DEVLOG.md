@@ -53,3 +53,8 @@
 - Added compact settings screens with Back and red Cancel navigation.
 - User configuration messages are deleted after validation and errors stay inside the panel.
 - Persisted the last sticker selection for a separate preview workflow.
+
+## 2026-07-02 — Main panel copy
+
+- Reworked the main panel into compact Send and Configuration blockquotes.
+- Kept premium emoji while making the supplied Russian copy and hierarchy exact.

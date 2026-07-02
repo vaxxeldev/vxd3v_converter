@@ -39,19 +39,19 @@ def main_text(settings: UserSettings, *, premium: bool = True) -> str:
     watermark = html.escape(settings.watermark_text or "выключена")
     return (
         f"{icon('settings', premium=premium)} <b>VXD3V CONVERTER</b>\n\n"
-        "Создавай плавные материалы для оформления ботов, каналов и сайтов.\n\n"
-        f"{icon('attach', premium=premium)} <b>Отправь премиум-эмодзи, стикер "
-        "или ссылку на набор</b>\n"
-        "Можно отправить до восьми эмодзи одним сообщением.\n\n"
-        f"{icon('brush', premium=premium)} Фон: <code>{html.escape(background)}</code>\n"
+        "Создавай пиздатое оформления для ботов, каналов и сайтов.\n\n"
+        f"{icon('attach', premium=premium)} <b>Отправь мне:</b>\n\n"
+        "<blockquote>Отправь премиум-эмодзи, стикер или ссылку на набор.</blockquote>\n\n"
+        f"{icon('settings', premium=premium)} <b>Конфигурация:</b>\n\n"
+        "<blockquote>"
+        f"{icon('brush', premium=premium)} Фон: {html.escape(background)}\n"
         f"{icon('format', premium=premium)} Холст: "
-        f"<code>{settings.width}×{settings.height} · {settings.fps} FPS</code>\n"
-        f"{icon('settings', premium=premium)} Размер: "
-        f"<code>{settings.emoji_size_percent}%</code>\n"
-        f"{icon('brush', premium=premium)} Цвет эмодзи: "
-        f"<code>{html.escape(emoji_color)}</code>\n"
-        f"{icon('font', premium=premium)} Вотермарка: <code>{watermark}</code>\n"
-        f"{icon('media', premium=premium)} Формат: <code>GIF в Telegram · MP4</code>"
+        f"{settings.width}×{settings.height} · {settings.fps} FPS\n"
+        f"{icon('settings', premium=premium)} Размер: {settings.emoji_size_percent}%\n"
+        f"{icon('brush', premium=premium)} Цвет эмодзи: {html.escape(emoji_color)}\n"
+        f"{icon('font', premium=premium)} Вотермарка: {watermark}\n"
+        f"{icon('media', premium=premium)} Формат: GIF в Telegram · MP4"
+        "</blockquote>"
     )
 
 
