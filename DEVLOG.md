@@ -93,3 +93,8 @@
 - Replaced the YooKassa placeholder with RUB-denominated Crypto Bot invoices.
 - Added persistent invoice polling, automatic one-time balance credits and payment notifications.
 - Added strict API URL, response and payment-link validation while keeping the API token in env only.
+
+## 2026-07-02 — Larger preview label
+
+- Replaced the free preview watermark with a centered `предпросмотр` label.
+- Increased its font size to 20% of canvas height without changing paid render watermarks.

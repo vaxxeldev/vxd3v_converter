@@ -136,7 +136,7 @@ def test_only_configured_admin_is_authorized() -> None:
     assert is_admin(123, settings) is False
 
 
-def test_preview_forces_centered_vxd3v_watermark() -> None:
+def test_preview_forces_large_centered_preview_watermark() -> None:
     source = UserSettings(
         user_id=1,
         watermark_text="custom",
@@ -145,9 +145,9 @@ def test_preview_forces_centered_vxd3v_watermark() -> None:
 
     preview = preview_settings(source)
 
-    assert preview.watermark_text == "vxd3v"
+    assert preview.watermark_text == "предпросмотр"
     assert preview.watermark_position is WatermarkPosition.CENTER
-    assert preview.watermark_font_scale == 0.13
+    assert preview.watermark_font_scale == 0.20
     assert preview.watermark_font is WatermarkFont.MONTSERRAT
     assert source.watermark_text == "custom"
 

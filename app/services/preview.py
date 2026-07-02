@@ -8,7 +8,7 @@ from app.models import UserSettings, WatermarkPosition
 def preview_settings(settings: UserSettings) -> UserSettings:
     return replace(
         settings,
-        watermark_text="vxd3v",
+        watermark_text="предпросмотр",
         watermark_position=WatermarkPosition.CENTER,
-        watermark_font_scale=0.13,
+        watermark_font_scale=0.20,
     )
