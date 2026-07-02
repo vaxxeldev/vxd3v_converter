@@ -186,15 +186,15 @@ async def show_referral(
     share_url = (
         "https://t.me/share/url?url="
         f"{quote(referral_link, safe='')}&text="
-        f"{quote('Попробуй VXD3V CONVERTER по моей ссылке', safe='')}"
+        f"{quote('Собираю пиздатое оформление в VXD3V CONVERTER — заходи по ссылке', safe='')}"
     )
     body = (
         "<b>Твоя ссылка:</b>\n"
         f"<blockquote>{html.escape(referral_link)}</blockquote>\n\n"
         "<b>Как это работает:</b>\n"
-        "<blockquote>• друг переходит по ссылке\n\n"
-        "• пополняет баланс от <b>50 ₽</b>\n\n"
-        "• ты получаешь <b>20 ₽</b>\n"
+        "<blockquote>• друг переходит по ссылке\n"
+        "• пополняет баланс от <b>50₽</b>\n"
+        "• ты получаешь <b>20₽</b>\n"
         "• дальше — <b>15%</b> с каждого его пополнения</blockquote>\n\n"
         f"<b>Приглашено:</b> {summary.invited}\n"
         f"<b>Активировано:</b> {summary.activated}\n"
