@@ -179,9 +179,7 @@ class MediaRenderer:
                     )
                 )
                 combined = f"asset{position}"
-                filters.append(
-                    f"[{main_label}][{effect_label}]overlay=0:0:shortest=1[{combined}]"
-                )
+                filters.append(f"[{main_label}][{effect_label}]overlay=0:0:shortest=1[{combined}]")
                 asset_labels.append(combined)
             else:
                 asset_labels.append(main_label)
@@ -196,8 +194,7 @@ class MediaRenderer:
             )
             inputs = "".join(f"[{label}]" for label in asset_labels)
             filters.append(
-                f"{inputs}xstack=inputs={len(asset_labels)}:layout={layout}:"
-                "fill=black@0[group]"
+                f"{inputs}xstack=inputs={len(asset_labels)}:layout={layout}:fill=black@0[group]"
             )
             group_label = "group"
 
@@ -230,8 +227,7 @@ class MediaRenderer:
             )
         else:
             filters.append(
-                f"[{current}]trim=duration={duration},setpts=PTS-STARTPTS,"
-                "format=yuv420p[output]"
+                f"[{current}]trim=duration={duration},setpts=PTS-STARTPTS,format=yuv420p[output]"
             )
         return ";".join(filters), "output"
 

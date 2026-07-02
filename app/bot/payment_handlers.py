@@ -297,16 +297,21 @@ async def _process_receipt(
     if not message.from_user or not _PAYMENT_ID.fullmatch(payment_id):
         return
     file_id: str | None = None
+    file_unique_id: str | None = None
     receipt_kind: str | None = None
     if message.photo:
-        file_id, receipt_kind = message.photo[-1].file_id, "photo"
+        file_id = message.photo[-1].file_id
+        file_unique_id = message.photo[-1].file_unique_id
+        receipt_kind = "photo"
     elif (
         message.document
         and message.document.mime_type in _RECEIPT_MIME_TYPES
         and (message.document.file_size or 0) <= _MAX_RECEIPT_BYTES
     ):
-        file_id, receipt_kind = message.document.file_id, "document"
-    if not file_id or not receipt_kind:
+        file_id = message.document.file_id
+        file_unique_id = message.document.file_unique_id
+        receipt_kind = "document"
+    if not file_id or not file_unique_id or not receipt_kind:
         await panel.delete_user_message(message)
         await panel.show(
             message.from_user.id,
@@ -320,12 +325,29 @@ async def _process_receipt(
             banner="topup",
         )
         return
-    payment = await payment_repository.attach_receipt(
-        payment_id,
-        message.from_user.id,
-        file_id,
-        receipt_kind,
-    )
+    try:
+        payment = await payment_repository.attach_receipt(
+            payment_id,
+            message.from_user.id,
+            file_id,
+            file_unique_id,
+            receipt_kind,
+        )
+    except PaymentStateError as error:
+        await panel.delete_user_message(message)
+        await settings_repository.set_pending_action(message.from_user.id, None)
+        await panel.show(
+            message.from_user.id,
+            message.chat.id,
+            _screen_factory(
+                "ЧЕК НЕ ПРИНЯТ",
+                "Создайте новую заявку или выберите другой способ оплаты.",
+                lambda premium: back_keyboard(premium=premium),
+                error=str(error),
+            ),
+            banner="topup",
+        )
+        return
     await settings_repository.set_pending_action(message.from_user.id, None)
     await panel.delete_user_message(message)
     await _send_admin_receipt(message, payment, bot, payment_repository, app_settings)
@@ -353,15 +375,17 @@ async def _send_admin_receipt(
     user = message.from_user
     name = html.escape(user.full_name if user else "Неизвестный пользователь")
     username = f"@{html.escape(user.username)}" if user and user.username else "нет"
+
     def build_caption(*, premium: bool) -> str:
         return (
-        f"{icon('money', premium=premium)} <b>Новая заявка на пополнение</b>\n\n"
-        f"<b>Пользователь:</b> {name}\n"
-        f"<b>Username:</b> {username}\n"
-        f"<b>Telegram ID:</b> <code>{payment.user_id}</code>\n"
-        f"<b>Сумма:</b> <code>{format_rubles(payment.amount_kopecks)}</code>\n"
-        f"<b>Заявка:</b> <code>{payment.id}</code>"
+            f"{icon('money', premium=premium)} <b>Новая заявка на пополнение</b>\n\n"
+            f"<b>Пользователь:</b> {name}\n"
+            f"<b>Username:</b> {username}\n"
+            f"<b>Telegram ID:</b> <code>{payment.user_id}</code>\n"
+            f"<b>Сумма:</b> <code>{format_rubles(payment.amount_kopecks)}</code>\n"
+            f"<b>Заявка:</b> <code>{payment.id}</code>"
         )
+
     caption = build_caption(premium=True)
     keyboard = admin_confirm_keyboard(payment.id)
     try:
@@ -432,6 +456,16 @@ async def approve_payment(
         )
     except (TelegramBadRequest, TelegramForbiddenError):
         pass
+    if result.referral_reward:
+        reward = result.referral_reward
+        try:
+            await bot.send_message(
+                reward.referrer_user_id,
+                f"{icon('send_money')} <b>Реферальное начисление</b>\n"
+                f"На баланс зачислено <code>{format_rubles(reward.amount_kopecks)}</code>.",
+            )
+        except (TelegramBadRequest, TelegramForbiddenError):
+            pass
     await show_wallet_panel(
         result.payment.user_id,
         settings_repository,

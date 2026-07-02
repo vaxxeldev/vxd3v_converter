@@ -90,4 +90,3 @@ class MediaProbe:
         if metadata.color_space != "bt709" or metadata.color_range not in {"tv", "limited"}:
             raise MediaValidationError("Результат должен использовать BT.709 limited.")
         return metadata
-

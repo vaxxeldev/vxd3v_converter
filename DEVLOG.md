@@ -106,3 +106,12 @@
 - Separated manual admin-credit funds so owner statistics exclude their remaining balance.
 - Preserved fund sources through render charges, failures, refunds and legacy-data migration.
 - Added owner-only `.стата` reporting for users, renders, balances, revenue and pending payments.
+
+## 2026-07-03 — Referral program and abuse protection
+
+- Added immutable Telegram deep-link referrals with invited, activated and earned counters.
+- Added a 20 RUB activation reward after the referred user's first confirmed top-up of at least 50 RUB.
+- Added a 15% reward from every later confirmed top-up by the referred user.
+- Made referral rewards atomic and idempotent for direct transfers and Crypto Bot payments.
+- Added duplicate receipt detection, limits for pending payments and per-user update throttling.
+- Upgraded aiogram to 3.29.1 and verified dependencies against known vulnerability advisories.

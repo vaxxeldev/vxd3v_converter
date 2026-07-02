@@ -92,13 +92,9 @@ class SettingsRepository:
                 "ALTER TABLE user_settings ADD COLUMN preview_message_id INTEGER"
             )
         if "last_sources_json" not in columns:
-            await connection.execute(
-                "ALTER TABLE user_settings ADD COLUMN last_sources_json TEXT"
-            )
+            await connection.execute("ALTER TABLE user_settings ADD COLUMN last_sources_json TEXT")
         if "panel_banner" not in columns:
-            await connection.execute(
-                "ALTER TABLE user_settings ADD COLUMN panel_banner TEXT"
-            )
+            await connection.execute("ALTER TABLE user_settings ADD COLUMN panel_banner TEXT")
         if "username" not in columns:
             await connection.execute("ALTER TABLE user_settings ADD COLUMN username TEXT")
             await connection.execute(
@@ -146,6 +142,14 @@ class SettingsRepository:
             )
             row = await cursor.fetchone()
         return None if row is None else int(row[0])
+
+    async def exists(self, user_id: int) -> bool:
+        async with aiosqlite.connect(self._database_path) as connection:
+            cursor = await connection.execute(
+                "SELECT 1 FROM user_settings WHERE user_id = ?",
+                (user_id,),
+            )
+            return await cursor.fetchone() is not None
 
     async def get(self, user_id: int) -> UserSettings:
         async with aiosqlite.connect(self._database_path) as connection:

@@ -45,6 +45,21 @@ class ApprovalResult:
     payment: PaymentRequest
     applied: bool
     balance_kopecks: int
+    referral_reward: ReferralReward | None = None
+
+
+@dataclass(slots=True, frozen=True)
+class ReferralReward:
+    referrer_user_id: int
+    amount_kopecks: int
+    kind: str
+
+
+@dataclass(slots=True, frozen=True)
+class ReferralSummary:
+    invited: int
+    activated: int
+    earned_kopecks: int
 
 
 @dataclass(slots=True, frozen=True)
@@ -79,6 +94,9 @@ class BotStatistics:
     crypto_topups_kopecks: int
     payments_awaiting_review: int
     crypto_invoices_active: int
+    referrals_invited: int
+    referrals_activated: int
+    referral_rewards_kopecks: int
 
     @property
     def successful_render_percent(self) -> float:
@@ -144,9 +162,31 @@ class PaymentRepository:
                 );
                 CREATE INDEX IF NOT EXISTS crypto_invoices_status
                 ON crypto_invoices(status);
+                CREATE TABLE IF NOT EXISTS referrals (
+                    referred_user_id INTEGER PRIMARY KEY REFERENCES user_settings(user_id),
+                    referrer_user_id INTEGER NOT NULL REFERENCES user_settings(user_id),
+                    status TEXT NOT NULL DEFAULT 'invited',
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    activated_at TEXT,
+                    CHECK(referred_user_id <> referrer_user_id)
+                );
+                CREATE INDEX IF NOT EXISTS referrals_referrer
+                ON referrals(referrer_user_id, status);
+                CREATE TABLE IF NOT EXISTS referral_rewards (
+                    id TEXT PRIMARY KEY,
+                    referrer_user_id INTEGER NOT NULL REFERENCES user_settings(user_id),
+                    referred_user_id INTEGER NOT NULL REFERENCES user_settings(user_id),
+                    payment_kind TEXT NOT NULL,
+                    payment_reference TEXT NOT NULL,
+                    reward_kind TEXT NOT NULL,
+                    amount_kopecks INTEGER NOT NULL CHECK(amount_kopecks > 0),
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(payment_kind, payment_reference)
+                );
                 """
             )
             await self._ensure_accounting_columns(connection)
+            await self._ensure_payment_security_columns(connection)
             await self._rebuild_admin_credit_balances(connection)
             await connection.commit()
 
@@ -161,9 +201,21 @@ class PaymentRepository:
             )
         if "regular_kopecks" not in columns:
             await connection.execute(
-                "ALTER TABLE render_orders ADD COLUMN regular_kopecks "
-                "INTEGER NOT NULL DEFAULT 0"
+                "ALTER TABLE render_orders ADD COLUMN regular_kopecks INTEGER NOT NULL DEFAULT 0"
             )
+
+    @staticmethod
+    async def _ensure_payment_security_columns(connection: aiosqlite.Connection) -> None:
+        cursor = await connection.execute("PRAGMA table_info(payment_requests)")
+        columns = {str(row[1]) for row in await cursor.fetchall()}
+        if "receipt_unique_id" not in columns:
+            await connection.execute(
+                "ALTER TABLE payment_requests ADD COLUMN receipt_unique_id TEXT"
+            )
+        await connection.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS payment_receipt_unique "
+            "ON payment_requests(receipt_unique_id) WHERE receipt_unique_id IS NOT NULL"
+        )
 
     @staticmethod
     async def _rebuild_admin_credit_balances(connection: aiosqlite.Connection) -> None:
@@ -204,6 +256,13 @@ class PaymentRepository:
         payment_id = uuid.uuid4().hex[:16]
         async with aiosqlite.connect(self._database_path) as connection:
             await connection.execute("BEGIN IMMEDIATE")
+            pending = await connection.execute(
+                "SELECT COUNT(*) FROM payment_requests WHERE user_id = ? AND status = ?",
+                (user_id, PaymentStatus.AWAITING_REVIEW),
+            )
+            if int((await pending.fetchone())[0]) >= 3:
+                await connection.rollback()
+                raise PaymentStateError("Слишком много платежей ожидают проверки.")
             await connection.execute(
                 "UPDATE payment_requests SET status = ?, updated_at = CURRENT_TIMESTAMP "
                 "WHERE user_id = ? AND status = ?",
@@ -222,6 +281,7 @@ class PaymentRepository:
         payment_id: str,
         user_id: int,
         file_id: str,
+        file_unique_id: str,
         receipt_kind: str,
     ) -> PaymentRequest:
         async with aiosqlite.connect(self._database_path) as connection:
@@ -235,10 +295,24 @@ class PaymentRepository:
             if row is None or row["status"] != PaymentStatus.AWAITING_RECEIPT:
                 await connection.rollback()
                 raise PaymentStateError("Заявка уже закрыта или не найдена.")
+            duplicate = await connection.execute(
+                "SELECT 1 FROM payment_requests WHERE receipt_unique_id = ? AND id <> ? LIMIT 1",
+                (file_unique_id, payment_id),
+            )
+            if await duplicate.fetchone() is not None:
+                await connection.rollback()
+                raise PaymentStateError("Этот чек уже использовался в другой заявке.")
             await connection.execute(
                 "UPDATE payment_requests SET status = ?, receipt_file_id = ?, "
-                "receipt_kind = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (PaymentStatus.AWAITING_REVIEW, file_id, receipt_kind, payment_id),
+                "receipt_unique_id = ?, receipt_kind = ?, updated_at = CURRENT_TIMESTAMP "
+                "WHERE id = ?",
+                (
+                    PaymentStatus.AWAITING_REVIEW,
+                    file_id,
+                    file_unique_id,
+                    receipt_kind,
+                    payment_id,
+                ),
             )
             await connection.commit()
         return PaymentRequest(
@@ -287,6 +361,7 @@ class PaymentRepository:
                 raise PaymentStateError("Заявка не найдена.")
             payment = self._payment(row)
             applied = payment.status is PaymentStatus.AWAITING_REVIEW
+            referral_reward = None
             if applied:
                 await connection.execute(
                     "UPDATE payment_requests SET status = ?, updated_at = CURRENT_TIMESTAMP "
@@ -304,6 +379,13 @@ class PaymentRepository:
                     "VALUES (?, ?, ?, 'topup', ?)",
                     (uuid.uuid4().hex, payment.user_id, payment.amount_kopecks, payment.id),
                 )
+                referral_reward = await self._apply_referral_reward(
+                    connection,
+                    payment.user_id,
+                    payment.amount_kopecks,
+                    "direct",
+                    payment.id,
+                )
                 payment = PaymentRequest(
                     payment.id,
                     payment.user_id,
@@ -318,7 +400,7 @@ class PaymentRepository:
             )
             balance_row = await balance_cursor.fetchone()
             await connection.commit()
-        return ApprovalResult(payment, applied, int(balance_row[0]))
+        return ApprovalResult(payment, applied, int(balance_row[0]), referral_reward)
 
     async def charge_render(self, user_id: int, amount_kopecks: int) -> RenderOrder:
         order_id = uuid.uuid4().hex
@@ -401,6 +483,12 @@ class PaymentRepository:
         pay_url: str,
     ) -> CryptoInvoiceRecord:
         async with aiosqlite.connect(self._database_path) as connection:
+            active = await connection.execute(
+                "SELECT COUNT(*) FROM crypto_invoices WHERE user_id = ? AND status = ?",
+                (user_id, CryptoInvoiceStatus.ACTIVE),
+            )
+            if int((await active.fetchone())[0]) >= 3:
+                raise PaymentStateError("Слишком много активных счетов Crypto Bot.")
             await connection.execute(
                 "INSERT INTO crypto_invoices "
                 "(invoice_id, user_id, amount_kopecks, status, pay_url) "
@@ -426,7 +514,9 @@ class PaymentRepository:
             rows = await cursor.fetchall()
         return [self._crypto_invoice(row) for row in rows]
 
-    async def settle_crypto_invoice(self, invoice_id: int, status: str) -> tuple[bool, int, int]:
+    async def settle_crypto_invoice(
+        self, invoice_id: int, status: str
+    ) -> tuple[bool, int, int, ReferralReward | None]:
         if status not in {CryptoInvoiceStatus.PAID, CryptoInvoiceStatus.EXPIRED}:
             raise PaymentStateError("Некорректный статус Crypto Bot.")
         async with aiosqlite.connect(self._database_path) as connection:
@@ -441,6 +531,7 @@ class PaymentRepository:
                 await connection.rollback()
                 raise PaymentStateError("Счёт Crypto Bot не найден.")
             applied = row["status"] == CryptoInvoiceStatus.ACTIVE
+            referral_reward = None
             if applied:
                 await connection.execute(
                     "UPDATE crypto_invoices SET status = ?, updated_at = CURRENT_TIMESTAMP "
@@ -464,13 +555,127 @@ class PaymentRepository:
                             str(invoice_id),
                         ),
                     )
+                    referral_reward = await self._apply_referral_reward(
+                        connection,
+                        int(row["user_id"]),
+                        int(row["amount_kopecks"]),
+                        "crypto",
+                        str(invoice_id),
+                    )
             balance_cursor = await connection.execute(
                 "SELECT balance_kopecks FROM user_settings WHERE user_id = ?",
                 (row["user_id"],),
             )
             balance = await balance_cursor.fetchone()
             await connection.commit()
-        return applied, int(row["user_id"]), int(balance[0])
+        return applied, int(row["user_id"]), int(balance[0]), referral_reward
+
+    async def bind_referrer(self, referred_user_id: int, referrer_user_id: int) -> bool:
+        if referred_user_id <= 0 or referrer_user_id <= 0 or referred_user_id == referrer_user_id:
+            return False
+        async with aiosqlite.connect(self._database_path) as connection:
+            await connection.execute("BEGIN IMMEDIATE")
+            users = await connection.execute(
+                "SELECT COUNT(*) FROM user_settings WHERE user_id IN (?, ?)",
+                (referred_user_id, referrer_user_id),
+            )
+            if int((await users.fetchone())[0]) != 2:
+                await connection.rollback()
+                return False
+            existing = await connection.execute(
+                "SELECT 1 FROM referrals WHERE referred_user_id = ?",
+                (referred_user_id,),
+            )
+            if await existing.fetchone() is not None:
+                await connection.rollback()
+                return False
+            paid = await connection.execute(
+                "SELECT 1 FROM balance_transactions WHERE user_id = ? "
+                "AND kind IN ('topup', 'crypto_topup') LIMIT 1",
+                (referred_user_id,),
+            )
+            if await paid.fetchone() is not None:
+                await connection.rollback()
+                return False
+            cursor = await connection.execute(
+                "INSERT OR IGNORE INTO referrals (referred_user_id, referrer_user_id) "
+                "VALUES (?, ?)",
+                (referred_user_id, referrer_user_id),
+            )
+            await connection.commit()
+        return cursor.rowcount == 1
+
+    async def referral_summary(self, referrer_user_id: int) -> ReferralSummary:
+        async with aiosqlite.connect(self._database_path) as connection:
+            cursor = await connection.execute(
+                "SELECT COUNT(*), COALESCE(SUM(status = 'activated'), 0) "
+                "FROM referrals WHERE referrer_user_id = ?",
+                (referrer_user_id,),
+            )
+            invited, activated = await cursor.fetchone()
+            rewards = await connection.execute(
+                "SELECT COALESCE(SUM(amount_kopecks), 0) FROM referral_rewards "
+                "WHERE referrer_user_id = ?",
+                (referrer_user_id,),
+            )
+            earned = int((await rewards.fetchone())[0])
+        return ReferralSummary(int(invited), int(activated), earned)
+
+    @staticmethod
+    async def _apply_referral_reward(
+        connection: aiosqlite.Connection,
+        referred_user_id: int,
+        topup_kopecks: int,
+        payment_kind: str,
+        payment_reference: str,
+    ) -> ReferralReward | None:
+        cursor = await connection.execute(
+            "SELECT referrer_user_id, status FROM referrals WHERE referred_user_id = ?",
+            (referred_user_id,),
+        )
+        referral = await cursor.fetchone()
+        if referral is None:
+            return None
+        referrer_user_id, status = int(referral[0]), str(referral[1])
+        if status == "invited":
+            if topup_kopecks < 5_000:
+                return None
+            amount, reward_kind = 2_000, "activation"
+            await connection.execute(
+                "UPDATE referrals SET status = 'activated', activated_at = CURRENT_TIMESTAMP "
+                "WHERE referred_user_id = ? AND status = 'invited'",
+                (referred_user_id,),
+            )
+        else:
+            amount, reward_kind = topup_kopecks * 15 // 100, "commission"
+        if amount <= 0:
+            return None
+        reward_id = uuid.uuid4().hex
+        await connection.execute(
+            "INSERT INTO referral_rewards "
+            "(id, referrer_user_id, referred_user_id, payment_kind, payment_reference, "
+            "reward_kind, amount_kopecks) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                reward_id,
+                referrer_user_id,
+                referred_user_id,
+                payment_kind,
+                payment_reference,
+                reward_kind,
+                amount,
+            ),
+        )
+        await connection.execute(
+            "UPDATE user_settings SET balance_kopecks = balance_kopecks + ? WHERE user_id = ?",
+            (amount, referrer_user_id),
+        )
+        await connection.execute(
+            "INSERT INTO balance_transactions "
+            "(id, user_id, amount_kopecks, kind, reference_id) "
+            "VALUES (?, ?, ?, 'referral_reward', ?)",
+            (uuid.uuid4().hex, referrer_user_id, amount, reward_id),
+        )
+        return ReferralReward(referrer_user_id, amount, reward_kind)
 
     async def complete_render(self, order_id: str) -> None:
         async with aiosqlite.connect(self._database_path) as connection:
@@ -514,6 +719,7 @@ class PaymentRepository:
 
     async def statistics(self, admin_id: int) -> BotStatistics:
         async with aiosqlite.connect(self._database_path) as connection:
+
             async def scalar(query: str, parameters: tuple[object, ...] = ()) -> int:
                 cursor = await connection.execute(query, parameters)
                 row = await cursor.fetchone()
@@ -575,6 +781,20 @@ class PaymentRepository:
                 "SELECT COUNT(*) FROM crypto_invoices WHERE user_id <> ? AND status = ?",
                 (admin_id, CryptoInvoiceStatus.ACTIVE),
             )
+            referrals_invited = await scalar(
+                "SELECT COUNT(*) FROM referrals WHERE referrer_user_id <> ?",
+                (admin_id,),
+            )
+            referrals_activated = await scalar(
+                "SELECT COUNT(*) FROM referrals WHERE referrer_user_id <> ? "
+                "AND status = 'activated'",
+                (admin_id,),
+            )
+            referral_rewards = await scalar(
+                "SELECT COALESCE(SUM(amount_kopecks), 0) FROM referral_rewards "
+                "WHERE referrer_user_id <> ?",
+                (admin_id,),
+            )
         return BotStatistics(
             users_total,
             users_today,
@@ -588,6 +808,9 @@ class PaymentRepository:
             crypto_topups,
             awaiting_review,
             active_crypto,
+            referrals_invited,
+            referrals_activated,
+            referral_rewards,
         )
 
     async def refund_interrupted_renders(self) -> int:

@@ -66,4 +66,3 @@ class ProcessRunner:
             )
             raise ProcessExecutionError("Медиаконвертер не смог обработать этот файл.")
         return ProcessResult(stdout=stdout, stderr=stderr)
-

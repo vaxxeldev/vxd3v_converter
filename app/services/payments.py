@@ -14,9 +14,7 @@ def parse_rubles(value: str, minimum_kopecks: int) -> int:
     if not _AMOUNT.fullmatch(normalized):
         raise PaymentStateError("Введите сумму числом, например 100 или 100.50.")
     try:
-        kopecks = int(
-            (Decimal(normalized) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-        )
+        kopecks = int((Decimal(normalized) * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
     except (InvalidOperation, ValueError) as error:
         raise PaymentStateError("Некорректная сумма пополнения.") from error
     if kopecks < minimum_kopecks:

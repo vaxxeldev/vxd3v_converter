@@ -85,9 +85,27 @@ def wallet_keyboard(*, premium: bool = True) -> InlineKeyboardMarkup:
                     style="primary",
                     icon="wallet",
                     premium=premium,
-                )
+                ),
+                button(
+                    "Рефералка",
+                    "menu:referral",
+                    icon="send_money",
+                    premium=premium,
+                ),
             ],
             [button("Назад", "menu:main", icon="home", premium=premium)],
+        ]
+    )
+
+
+def referral_keyboard(share_url: str, *, premium: bool = True) -> InlineKeyboardMarkup:
+    invite_extra = {}
+    if premium:
+        invite_extra["icon_custom_emoji_id"] = ICONS["send_money"]
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Пригласить", url=share_url, **invite_extra)],
+            [button("Назад", "menu:wallet", icon="home", premium=premium)],
         ]
     )
 

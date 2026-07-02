@@ -40,4 +40,3 @@ def resolve_adaptive_color(settings: UserSettings) -> str:
     red, green, blue = (int(color[index : index + 2], 16) for index in (0, 2, 4))
     luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255
     return "#000000" if luminance > 0.5 else "#FFFFFF"
-

@@ -40,4 +40,3 @@ def _validate_tgs(path: Path) -> None:
     required = {"v", "fr", "ip", "op", "w", "h", "layers"}
     if not isinstance(data, dict) or not required.issubset(data):
         raise MediaValidationError("TGS не содержит обязательных данных.")
-

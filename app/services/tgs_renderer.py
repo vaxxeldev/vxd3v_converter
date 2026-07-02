@@ -165,12 +165,10 @@ class TgsRenderer:
             raise
         if renderer_code != 0 or encoder_code != 0:
             logger.error(
-                "TGS pipeline failed renderer=%s encoder=%s renderer_stderr=%s "
-                "encoder_stderr=%s",
+                "TGS pipeline failed renderer=%s encoder=%s renderer_stderr=%s encoder_stderr=%s",
                 renderer_code,
                 encoder_code,
                 sanitize_stderr(renderer_stderr),
                 sanitize_stderr(encoder_stderr),
             )
             raise ProcessExecutionError("Не удалось отрисовать TGS-анимацию.")
-

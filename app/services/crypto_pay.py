@@ -143,7 +143,12 @@ class CryptoPaymentService:
             for invoice in remote:
                 if invoice.invoice_id not in local or invoice.status == "active":
                     continue
-                applied, user_id, balance = await self._repository.settle_crypto_invoice(
+                (
+                    applied,
+                    user_id,
+                    balance,
+                    referral_reward,
+                ) = await self._repository.settle_crypto_invoice(
                     invoice.invoice_id,
                     invoice.status,
                 )
@@ -159,3 +164,13 @@ class CryptoPaymentService:
                     )
                 except (TelegramBadRequest, TelegramForbiddenError):
                     pass
+                if referral_reward:
+                    try:
+                        await bot.send_message(
+                            referral_reward.referrer_user_id,
+                            "💸 <b>Реферальное начисление</b>\n"
+                            "На баланс зачислено "
+                            f"<code>{format_rubles(referral_reward.amount_kopecks)}</code>.",
+                        )
+                    except (TelegramBadRequest, TelegramForbiddenError):
+                        pass

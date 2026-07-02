@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import logging
 import re
+from urllib.parse import quote
 
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatAction
@@ -17,6 +18,7 @@ from app.bot.keyboards import (
     cancel_keyboard,
     emoji_color_keyboard,
     main_keyboard,
+    referral_keyboard,
     resolution_keyboard,
     size_keyboard,
     wallet_keyboard,
@@ -37,6 +39,7 @@ from app.services.payments import format_rubles, parse_rubles
 logger = logging.getLogger(__name__)
 router = Router(name="converter")
 _HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_REFERRAL_PAYLOAD = re.compile(r"(?:^|\s)ref_([1-9][0-9]{0,19})$")
 _ADMIN_CREDIT = re.compile(
     r"^\.пополнить\s+@([A-Za-z0-9_]{5,32})\s+([0-9]+(?:[.,][0-9]{1,2})?)$",
     re.IGNORECASE,
@@ -93,11 +96,20 @@ async def _show_main(
 async def start(
     message: Message,
     repository: SettingsRepository,
+    payment_repository: PaymentRepository,
     panel: PanelService,
 ) -> None:
     if not message.from_user:
         return
+    existed = await repository.exists(message.from_user.id)
     await repository.remember_username(message.from_user.id, message.from_user.username)
+    if not existed:
+        match = _REFERRAL_PAYLOAD.search(message.text or "")
+        if match:
+            await payment_repository.bind_referrer(
+                message.from_user.id,
+                int(match.group(1)),
+            )
     await repository.set_pending_action(message.from_user.id, None)
     await panel.delete_user_message(message)
     settings = await repository.get(message.from_user.id)
@@ -157,6 +169,47 @@ async def show_wallet(
         repository,
         panel,
         app_settings,
+    )
+
+
+@router.callback_query(F.data == "menu:referral")
+async def show_referral(
+    callback: CallbackQuery,
+    bot: Bot,
+    payment_repository: PaymentRepository,
+    panel: PanelService,
+) -> None:
+    await callback.answer()
+    summary = await payment_repository.referral_summary(callback.from_user.id)
+    me = await bot.get_me()
+    referral_link = f"https://t.me/{me.username}?start=ref_{callback.from_user.id}"
+    share_url = (
+        "https://t.me/share/url?url="
+        f"{quote(referral_link, safe='')}&text="
+        f"{quote('Попробуй VXD3V CONVERTER по моей ссылке', safe='')}"
+    )
+    body = (
+        "<b>Твоя ссылка:</b>\n"
+        f"<blockquote>{html.escape(referral_link)}</blockquote>\n\n"
+        "<b>Как это работает:</b>\n"
+        "<blockquote>• друг переходит по ссылке\n\n"
+        "• пополняет баланс от <b>50 ₽</b>\n\n"
+        "• ты получаешь <b>20 ₽</b>\n"
+        "• дальше — <b>15%</b> с каждого его пополнения</blockquote>\n\n"
+        f"<b>Приглашено:</b> {summary.invited}\n"
+        f"<b>Активировано:</b> {summary.activated}\n"
+        f"<b>Заработано:</b> {format_rubles(summary.earned_kopecks)}"
+    )
+    await panel.show(
+        callback.from_user.id,
+        callback.from_user.id,
+        _screen_factory(
+            "Пригласи друга",
+            body,
+            lambda premium: referral_keyboard(share_url, premium=premium),
+            icon_name="send_money",
+        ),
+        banner="wallet",
     )
 
 
@@ -625,6 +678,10 @@ async def _process_admin_statistics(
         f"Реальные пополнения: <code>{format_rubles(real_topups)}</code>\n"
         f"Прямые переводы: <code>{format_rubles(stats.direct_topups_kopecks)}</code>\n"
         f"Crypto Bot: <code>{format_rubles(stats.crypto_topups_kopecks)}</code>\n\n"
+        "<b>Реферальная система</b>\n"
+        f"Приглашено: <code>{stats.referrals_invited}</code>\n"
+        f"Активировано: <code>{stats.referrals_activated}</code>\n"
+        f"Начислено: <code>{format_rubles(stats.referral_rewards_kopecks)}</code>\n\n"
         "<b>Ожидают обработки</b>\n"
         f"Чеков: <code>{stats.payments_awaiting_review}</code>\n"
         f"Crypto-счетов: <code>{stats.crypto_invoices_active}</code>"

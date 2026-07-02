@@ -17,8 +17,7 @@ class Settings(BaseSettings):
     )
 
     bot_token: SecretStr | None = Field(
-        default=None,
-        validation_alias=AliasChoices("BOT_TOKEN", "TELEGRAM_BOT_TOKEN", "API_TOKEN")
+        default=None, validation_alias=AliasChoices("BOT_TOKEN", "TELEGRAM_BOT_TOKEN", "API_TOKEN")
     )
     database_path: Path = Path("/app/data/bot.sqlite3")
     temp_root: Path = Path(tempfile.gettempdir()) / "vxd3v-converter"

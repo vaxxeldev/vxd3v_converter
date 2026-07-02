@@ -12,6 +12,7 @@ from aiogram.types import BotCommand
 from app.bot.banners import BannerService
 from app.bot.downloader import AiogramFileDownloader
 from app.bot.handlers import router
+from app.bot.middleware import UserRateLimitMiddleware
 from app.bot.panel import PanelService
 from app.bot.payment_handlers import router as payment_router
 from app.config import Settings, get_settings
@@ -61,6 +62,9 @@ async def main() -> None:
     panel = PanelService(bot, repository, settings, banner_service)
     crypto_payments = CryptoPaymentService(settings, payment_repository)
     dispatcher = Dispatcher()
+    rate_limiter = UserRateLimitMiddleware()
+    dispatcher.message.outer_middleware(rate_limiter)
+    dispatcher.callback_query.outer_middleware(rate_limiter)
     dispatcher.include_router(payment_router)
     dispatcher.include_router(router)
     await bot.set_my_commands(
