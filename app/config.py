@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     max_concurrent_renders: int = Field(default=1, ge=1, le=8)
     max_queue_size: int = Field(default=20, ge=1, le=500)
     max_cache_bytes: int = Field(default=512 * 1024 * 1024, ge=16 * 1024 * 1024)
-    enable_custom_button_emoji: bool = False
+    enable_custom_button_emoji: bool = True
 
     @field_validator("log_level")
     @classmethod

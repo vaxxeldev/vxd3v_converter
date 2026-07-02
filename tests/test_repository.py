@@ -5,7 +5,7 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from app.models import BackgroundKind, OutputFormat
+from app.models import BackgroundKind, OutputFormat, SourceAsset, StickerKind
 from app.repositories import SettingsRepository
 
 
@@ -57,3 +57,45 @@ async def test_initialize_migrates_legacy_formats_to_telegram_animation(
     await repository.initialize()
 
     assert (await repository.get(7)).output_format is OutputFormat.ANIMATION
+
+
+async def test_panel_and_last_sources_survive_restart(tmp_path: Path) -> None:
+    database = tmp_path / "bot.sqlite3"
+    first = SettingsRepository(database)
+    await first.initialize()
+    sources = [
+        SourceAsset(
+            file_id="file-id",
+            file_unique_id="unique-id",
+            kind=StickerKind.TGS,
+            emoji="✨",
+            custom_emoji_id="emoji-id",
+            needs_repainting=True,
+            premium_animation_file_id="effect-id",
+        )
+    ]
+
+    await first.set_panel(11, 11, 900)
+    await first.set_preview_message(11, 901)
+    await first.set_sources(11, sources)
+
+    second = SettingsRepository(database)
+    await second.initialize()
+    loaded = await second.get_sources(11)
+    assert await second.get_panel(11) == (11, 900)
+    assert await second.get_preview_message(11) == 901
+    assert loaded == sources
+
+
+async def test_corrupt_source_draft_is_ignored(tmp_path: Path) -> None:
+    database = tmp_path / "bot.sqlite3"
+    repository = SettingsRepository(database)
+    await repository.initialize()
+    await repository.get(12)
+    async with aiosqlite.connect(database) as connection:
+        await connection.execute(
+            "UPDATE user_settings SET last_sources_json = 'broken' WHERE user_id = 12"
+        )
+        await connection.commit()
+
+    assert await repository.get_sources(12) == []

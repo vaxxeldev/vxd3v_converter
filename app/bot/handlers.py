@@ -11,13 +11,19 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, ErrorEvent, FSInputFile, Message
 
 from app.bot.keyboards import (
+    back_keyboard,
+    background_keyboard,
+    cancel_keyboard,
+    emoji_color_keyboard,
     main_keyboard,
     resolution_keyboard,
     size_keyboard,
+    watermark_keyboard,
 )
+from app.bot.panel import PanelService
 from app.bot.sources import extract_sources
-from app.config import Settings
-from app.models import BackgroundKind, OutputFormat, UserSettings, WatermarkPosition
+from app.bot.texts import icon, main_text, screen_text
+from app.models import BackgroundKind, UserSettings, WatermarkPosition
 from app.repositories import SettingsRepository
 from app.services.conversion import ConversionService, RenderedMedia
 from app.services.errors import ConversionError
@@ -25,154 +31,456 @@ from app.services.errors import ConversionError
 logger = logging.getLogger(__name__)
 router = Router(name="converter")
 _HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
-_POSITION_ALIASES = {
-    "сверху слева": WatermarkPosition.TOP_LEFT,
-    "сверху справа": WatermarkPosition.TOP_RIGHT,
-    "по центру": WatermarkPosition.CENTER,
-    "снизу слева": WatermarkPosition.BOTTOM_LEFT,
-    "снизу справа": WatermarkPosition.BOTTOM_RIGHT,
+_POSITIONS = {item.value: item for item in WatermarkPosition}
+_POSITION_LABELS = {
+    WatermarkPosition.TOP_LEFT: "сверху слева",
+    WatermarkPosition.TOP_RIGHT: "сверху справа",
+    WatermarkPosition.CENTER: "по центру",
+    WatermarkPosition.BOTTOM_LEFT: "снизу слева",
+    WatermarkPosition.BOTTOM_RIGHT: "снизу справа",
 }
 
 
-def _welcome_text(user: UserSettings) -> str:
-    return (
-        "<b>Создан для пиздатого оформления ботов и сайтов</b>\n\n"
-        "⬆️ <b>Отправь мне:</b>\n"
-        "премиум-эмодзи (можно несколько), стикер или ссылку на emoji/sticker pack.\n\n"
-        "🔣 <b>Конфигурация:</b>\n"
-        f"🖌 Цвет фона: <code>{user.background_color}</code>\n"
-        f"↔️ Разрешение: <code>{user.width}×{user.height} · {user.fps} FPS</code>\n"
-        "🎨 Формат: <code>GIF в Telegram (MP4)</code>\n"
-        f"🔎 Размер эмодзи: <code>{user.emoji_size_percent}%</code>\n"
-        f"🔤 Вотермарка: <code>{html.escape(user.watermark_text or 'выключена')}</code>"
+def _main_factory(settings: UserSettings):
+    return lambda premium: (
+        main_text(settings, premium=premium),
+        main_keyboard(settings, premium=premium),
     )
+
+
+def _screen_factory(
+    title: str,
+    body: str,
+    keyboard_factory,
+    *,
+    icon_name: str = "settings",
+    error: str | None = None,
+):
+    return lambda premium: (
+        screen_text(
+            title,
+            body,
+            icon_name=icon_name,
+            error=error,
+            premium=premium,
+        ),
+        keyboard_factory(premium),
+    )
+
+
+async def _show_main(
+    user_id: int,
+    chat_id: int,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
+    settings = await repository.get(user_id)
+    await panel.show(user_id, chat_id, _main_factory(settings))
 
 
 @router.message(CommandStart())
 async def start(
     message: Message,
     repository: SettingsRepository,
-    app_settings: Settings,
+    panel: PanelService,
 ) -> None:
     if not message.from_user:
         return
-    settings = await repository.get(message.from_user.id)
     await repository.set_pending_action(message.from_user.id, None)
-    await message.answer(
-        _welcome_text(settings),
-        reply_markup=main_keyboard(settings, app_settings),
-    )
+    await panel.delete_user_message(message)
+    await _show_main(message.from_user.id, message.chat.id, repository, panel)
 
 
 @router.message(Command("cancel"))
-async def cancel(message: Message, repository: SettingsRepository) -> None:
-    if message.from_user:
-        await repository.set_pending_action(message.from_user.id, None)
-    await message.answer("Действие отменено.")
+async def cancel_command(
+    message: Message,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
+    if not message.from_user:
+        return
+    await repository.set_pending_action(message.from_user.id, None)
+    await panel.delete_user_message(message)
+    await _show_main(message.from_user.id, message.chat.id, repository, panel)
+
+
+@router.callback_query(F.data == "menu:main")
+async def main_menu(
+    callback: CallbackQuery,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
+    await callback.answer()
+    await repository.set_pending_action(callback.from_user.id, None)
+    await _show_main(callback.from_user.id, callback.from_user.id, repository, panel)
+
+
+@router.callback_query(F.data == "action:cancel")
+async def cancel_input(
+    callback: CallbackQuery,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
+    await callback.answer("Ввод отменён")
+    await repository.set_pending_action(callback.from_user.id, None)
+    await _show_main(callback.from_user.id, callback.from_user.id, repository, panel)
 
 
 @router.callback_query(F.data == "menu:wallet")
-async def show_wallet(callback: CallbackQuery, repository: SettingsRepository) -> None:
+async def show_wallet(
+    callback: CallbackQuery,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
+    await callback.answer()
     settings = await repository.get(callback.from_user.id)
-    await callback.answer(f"Баланс: {settings.balance_kopecks / 100:.2f} ₽", show_alert=True)
+    body = (
+        f"Текущий баланс: <b>{settings.balance_kopecks / 100:.2f} ₽</b>\n\n"
+        "Пополнение и стоимость генерации появятся на следующем этапе."
+    )
+    await panel.show(
+        callback.from_user.id,
+        callback.from_user.id,
+        _screen_factory(
+            "КОШЕЛЁК",
+            body,
+            lambda premium: back_keyboard(premium=premium),
+            icon_name="wallet",
+        ),
+    )
 
 
 @router.callback_query(F.data == "menu:resolution")
-async def choose_resolution(callback: CallbackQuery, app_settings: Settings) -> None:
+async def choose_resolution(
+    callback: CallbackQuery,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
     await callback.answer()
-    if callback.message:
-        await callback.message.answer(
-            "Выбери разрешение и частоту кадров:",
-            reply_markup=resolution_keyboard(app_settings),
-        )
+    await _show_resolution(callback.from_user.id, repository, panel)
+
+
+async def _show_resolution(
+    user_id: int,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
+    settings = await repository.get(user_id)
+    await panel.show(
+        user_id,
+        user_id,
+        _screen_factory(
+            "РАЗРЕШЕНИЕ",
+            "Выбери размер холста и частоту кадров.\n"
+            f"Сейчас: <code>{settings.width}×{settings.height} · {settings.fps} FPS</code>",
+            lambda premium: resolution_keyboard(settings, premium=premium),
+            icon_name="format",
+        ),
+    )
 
 
 @router.callback_query(F.data == "menu:size")
-async def choose_size(callback: CallbackQuery, app_settings: Settings) -> None:
+async def choose_size(
+    callback: CallbackQuery,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
     await callback.answer()
-    if callback.message:
-        await callback.message.answer(
-            "Размер считается от меньшей стороны холста:",
-            reply_markup=size_keyboard(app_settings),
-        )
+    await _show_size(callback.from_user.id, repository, panel)
+
+
+async def _show_size(
+    user_id: int,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
+    settings = await repository.get(user_id)
+    await panel.show(
+        user_id,
+        user_id,
+        _screen_factory(
+            "РАЗМЕР ЭМОДЗИ",
+            "Размер считается от меньшей стороны холста.\n"
+            f"Сейчас: <code>{settings.emoji_size_percent}%</code>",
+            lambda premium: size_keyboard(settings, premium=premium),
+        ),
+    )
 
 
 @router.callback_query(F.data == "menu:background")
-async def request_background(callback: CallbackQuery, repository: SettingsRepository) -> None:
-    await repository.set_pending_action(callback.from_user.id, "background_color")
+async def choose_background(
+    callback: CallbackQuery,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
     await callback.answer()
-    if callback.message:
-        await callback.message.answer(
-            "Пришли HEX-цвет, например <code>#FFFFFF</code>. /cancel — отмена."
-        )
+    await _show_background(callback.from_user.id, repository, panel)
+
+
+async def _show_background(
+    user_id: int,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
+    settings = await repository.get(user_id)
+    current = (
+        settings.background_color
+        if settings.background_kind is BackgroundKind.COLOR
+        else "загруженное медиа"
+    )
+    await panel.show(
+        user_id,
+        user_id,
+        _screen_factory(
+            "ФОН",
+            f"Текущий фон: <code>{html.escape(current)}</code>",
+            lambda premium: background_keyboard(settings, premium=premium),
+            icon_name="brush",
+        ),
+    )
 
 
 @router.callback_query(F.data == "menu:emoji_color")
-async def request_emoji_color(callback: CallbackQuery, repository: SettingsRepository) -> None:
-    await repository.set_pending_action(callback.from_user.id, "emoji_color")
+async def choose_emoji_color(
+    callback: CallbackQuery,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
     await callback.answer()
-    if callback.message:
-        await callback.message.answer(
-            "Пришли HEX-цвет для перекрашиваемых эмодзи или слово <code>авто</code>."
-        )
+    await _show_emoji_color(callback.from_user.id, repository, panel)
+
+
+async def _show_emoji_color(
+    user_id: int,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
+    settings = await repository.get(user_id)
+    current = settings.emoji_color or "автоматический контраст"
+    await panel.show(
+        user_id,
+        user_id,
+        _screen_factory(
+            "ЦВЕТ ЭМОДЗИ",
+            "Применяется только к перекрашиваемым эмодзи.\n"
+            f"Сейчас: <code>{html.escape(current)}</code>",
+            lambda premium: emoji_color_keyboard(settings, premium=premium),
+            icon_name="brush",
+        ),
+    )
 
 
 @router.callback_query(F.data == "menu:watermark")
-async def request_watermark(callback: CallbackQuery, repository: SettingsRepository) -> None:
-    await repository.set_pending_action(callback.from_user.id, "watermark")
+async def choose_watermark(
+    callback: CallbackQuery,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
     await callback.answer()
-    if callback.message:
-        await callback.message.answer(
-            "Пришли <code>текст | расположение</code>. Например: "
-            "<code>vxdev | снизу справа</code>. Чтобы выключить — <code>нет</code>."
-        )
+    await _show_watermark(callback.from_user.id, repository, panel)
 
 
-@router.callback_query(F.data == "menu:media")
-async def request_media(callback: CallbackQuery, repository: SettingsRepository) -> None:
-    await repository.set_pending_action(callback.from_user.id, "background_media")
+async def _show_watermark(
+    user_id: int,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
+    settings = await repository.get(user_id)
+    text = html.escape(settings.watermark_text or "выключена")
+    position = _POSITION_LABELS[settings.watermark_position]
+    await panel.show(
+        user_id,
+        user_id,
+        _screen_factory(
+            "ВОТЕРМАРКА",
+            f"Текст: <code>{text}</code>\nПоложение: <code>{position}</code>",
+            lambda premium: watermark_keyboard(settings, premium=premium),
+            icon_name="font",
+        ),
+    )
+
+
+@router.callback_query(F.data.startswith("input:"))
+async def request_input(
+    callback: CallbackQuery,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
     await callback.answer()
-    if callback.message:
-        await callback.message.answer("Пришли фото, видео или анимацию для фона.")
-
-
-@router.callback_query(F.data == "menu:preview")
-async def request_preview(callback: CallbackQuery) -> None:
-    await callback.answer()
-    if callback.message:
-        await callback.message.answer(
-            "Отправь премиум-эмодзи или стикер — сразу соберу предпросмотр."
-        )
+    action = (callback.data or "").split(":", 1)[1]
+    prompts = {
+        "background_color": (
+            "ЦВЕТ ФОНА",
+            "Отправь HEX-цвет одним сообщением.\nНапример: <code>#FFFFFF</code>",
+            "brush",
+        ),
+        "background_media": (
+            "МЕДИА-ФОН",
+            "Отправь фотографию, видео или GIF-анимацию.",
+            "media",
+        ),
+        "emoji_color": (
+            "ЦВЕТ ЭМОДЗИ",
+            "Отправь HEX-цвет одним сообщением.\nНапример: <code>#FFFFFF</code>",
+            "brush",
+        ),
+        "watermark": (
+            "ТЕКСТ ВОТЕРМАРКИ",
+            "Отправь текст длиной до 64 символов.",
+            "font",
+        ),
+    }
+    if action not in prompts:
+        await _show_main(callback.from_user.id, callback.from_user.id, repository, panel)
+        return
+    await repository.set_pending_action(callback.from_user.id, action)
+    title, body, icon_name = prompts[action]
+    await panel.show(
+        callback.from_user.id,
+        callback.from_user.id,
+        _screen_factory(
+            title,
+            body,
+            lambda premium: cancel_keyboard(premium=premium),
+            icon_name=icon_name,
+        ),
+    )
 
 
 @router.callback_query(F.data.startswith("set:resolution:"))
-async def set_resolution(callback: CallbackQuery, repository: SettingsRepository) -> None:
+async def set_resolution(
+    callback: CallbackQuery,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
     try:
         _, _, width, height, fps = (callback.data or "").split(":")
         values = int(width), int(height), int(fps)
     except ValueError:
-        await callback.answer("Некорректные параметры.", show_alert=True)
+        await callback.answer("Некорректные параметры", show_alert=True)
         return
     allowed = {(1920, 530, 60), (1280, 720, 60), (1080, 1080, 60), (1280, 720, 30)}
     if values not in allowed:
-        await callback.answer("Такого пресета нет.", show_alert=True)
+        await callback.answer("Такого пресета нет", show_alert=True)
         return
     await repository.update(callback.from_user.id, width=values[0], height=values[1], fps=values[2])
-    await callback.answer("Разрешение сохранено.")
+    await callback.answer("Сохранено")
+    await _show_resolution(callback.from_user.id, repository, panel)
 
 
 @router.callback_query(F.data.startswith("set:size:"))
-async def set_size(callback: CallbackQuery, repository: SettingsRepository) -> None:
+async def set_size(
+    callback: CallbackQuery,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
     try:
         size = int((callback.data or "").rsplit(":", 1)[1])
     except (ValueError, IndexError):
-        await callback.answer("Некорректный размер.", show_alert=True)
+        await callback.answer("Некорректный размер", show_alert=True)
         return
     if size not in {15, 25, 35, 50, 70, 100}:
-        await callback.answer("Такого размера нет.", show_alert=True)
+        await callback.answer("Такого размера нет", show_alert=True)
         return
     await repository.update(callback.from_user.id, emoji_size_percent=size)
-    await callback.answer("Размер сохранён.")
+    await callback.answer("Сохранено")
+    await _show_size(callback.from_user.id, repository, panel)
+
+
+@router.callback_query(F.data == "set:background:color")
+async def set_color_background(
+    callback: CallbackQuery,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
+    await repository.update(
+        callback.from_user.id,
+        background_kind=BackgroundKind.COLOR,
+        background_file_id=None,
+    )
+    await callback.answer("Цветной фон включён")
+    await _show_background(callback.from_user.id, repository, panel)
+
+
+@router.callback_query(F.data == "set:emoji_color:auto")
+async def set_auto_emoji_color(
+    callback: CallbackQuery,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
+    await repository.update(callback.from_user.id, emoji_color=None)
+    await callback.answer("Автоматический цвет включён")
+    await _show_emoji_color(callback.from_user.id, repository, panel)
+
+
+@router.callback_query(F.data == "set:watermark:off")
+async def disable_watermark(
+    callback: CallbackQuery,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
+    await repository.update(callback.from_user.id, watermark_text=None)
+    await callback.answer("Вотермарка выключена")
+    await _show_watermark(callback.from_user.id, repository, panel)
+
+
+@router.callback_query(F.data.startswith("set:watermark_position:"))
+async def set_watermark_position(
+    callback: CallbackQuery,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
+    value = (callback.data or "").rsplit(":", 1)[-1]
+    position = _POSITIONS.get(value)
+    if position is None:
+        await callback.answer("Некорректная позиция", show_alert=True)
+        return
+    await repository.update(callback.from_user.id, watermark_position=position)
+    await callback.answer("Положение сохранено")
+    await _show_watermark(callback.from_user.id, repository, panel)
+
+
+@router.callback_query(F.data == "menu:preview")
+async def preview(
+    callback: CallbackQuery,
+    bot: Bot,
+    repository: SettingsRepository,
+    panel: PanelService,
+    conversion: ConversionService,
+) -> None:
+    await callback.answer()
+    user_id = callback.from_user.id
+    sources = await repository.get_sources(user_id)
+    if not sources:
+        await panel.show(
+            user_id,
+            user_id,
+            _screen_factory(
+                "ПРЕДПРОСМОТР",
+                "Сначала отправь премиум-эмодзи или стикер.\n"
+                "После этого материал сохранится для предпросмотра.",
+                lambda premium: back_keyboard(premium=premium),
+                icon_name="eye",
+            ),
+        )
+        return
+    settings = await repository.get(user_id)
+    await _show_rendering(user_id, panel, "Собираю предпросмотр в 60 FPS…")
+    await bot.send_chat_action(user_id, ChatAction.UPLOAD_VIDEO)
+    try:
+        async with conversion.convert(settings, sources) as result:
+            old_preview = await repository.get_preview_message(user_id)
+            if old_preview:
+                try:
+                    await bot.delete_message(user_id, old_preview)
+                except TelegramBadRequest:
+                    pass
+            sent = await _send_result(bot, user_id, result, preview=True)
+            await repository.set_preview_message(user_id, sent.message_id)
+    except ConversionError as error:
+        await _show_render_error(user_id, panel, str(error))
+        return
+    await _show_main(user_id, user_id, repository, panel)
 
 
 @router.message()
@@ -181,49 +489,55 @@ async def process_message(
     bot: Bot,
     repository: SettingsRepository,
     conversion: ConversionService,
-    app_settings: Settings,
+    panel: PanelService,
 ) -> None:
     if not message.from_user:
         return
     user_id = message.from_user.id
     pending = await repository.get_pending_action(user_id)
-    if pending and await _process_pending(message, repository, pending, app_settings):
+    if pending:
+        await _process_pending(message, repository, panel, pending)
         return
     try:
         sources = await extract_sources(message, bot)
     except TelegramBadRequest:
-        await message.answer(
-            "Не удалось открыть этот набор. Проверь ссылку или отправь сам стикер."
-        )
+        await panel.delete_user_message(message)
+        await _show_input_error(user_id, panel, "Не удалось открыть этот набор")
         return
     if not sources:
-        await message.answer("Отправь премиум-эмодзи, стикер или ссылку на публичный набор.")
+        await panel.delete_user_message(message)
+        await _show_input_error(
+            user_id,
+            panel,
+            "Отправь премиум-эмодзи, стикер или ссылку на публичный набор",
+        )
         return
-    user_settings = await repository.get(user_id)
-    status = await message.answer("⏳ Рисую все кадры в 60 FPS…")
-    await bot.send_chat_action(message.chat.id, ChatAction.UPLOAD_VIDEO)
+    await repository.set_sources(user_id, sources)
+    await panel.delete_user_message(message)
+    settings = await repository.get(user_id)
+    await _show_rendering(user_id, panel, "Рисую все кадры в 60 FPS…")
+    await bot.send_chat_action(user_id, ChatAction.UPLOAD_VIDEO)
     try:
-        async with conversion.convert(user_settings, sources) as result:
-            await _send_result(message, result)
+        async with conversion.convert(settings, sources) as result:
+            await _send_result(bot, user_id, result)
     except ConversionError as error:
-        await message.answer(f"❌ {html.escape(str(error))}")
-    finally:
-        try:
-            await status.delete()
-        except TelegramBadRequest:
-            pass
+        await _show_render_error(user_id, panel, str(error))
+        return
+    await _show_main(user_id, user_id, repository, panel)
 
 
 async def _process_pending(
     message: Message,
     repository: SettingsRepository,
+    panel: PanelService,
     pending: str,
-    app_settings: Settings,
-) -> bool:
+) -> None:
     if not message.from_user:
-        return False
+        return
     user_id = message.from_user.id
     text = (message.text or "").strip()
+    error: str | None = None
+    destination = "main"
     if pending == "background_media":
         if message.photo:
             file_id, kind = message.photo[-1].file_id, BackgroundKind.PHOTO
@@ -232,86 +546,168 @@ async def _process_pending(
         elif message.animation:
             file_id, kind = message.animation.file_id, BackgroundKind.ANIMATION
         else:
-            await message.answer("Нужно прислать фото, видео или GIF-анимацию.")
-            return True
-        settings = await repository.update(
-            user_id,
-            background_kind=kind,
-            background_file_id=file_id,
-        )
+            error = "Нужно прислать фото, видео или GIF-анимацию"
+        if error is None:
+            await repository.update(
+                user_id,
+                background_kind=kind,
+                background_file_id=file_id,
+            )
+            destination = "background"
     elif pending in {"background_color", "emoji_color"}:
-        if pending == "emoji_color" and text.lower() == "авто":
-            settings = await repository.update(user_id, emoji_color=None)
-        elif not _HEX_COLOR.fullmatch(text):
-            await message.answer("Нужен HEX в формате <code>#RRGGBB</code>.")
-            return True
+        if not _HEX_COLOR.fullmatch(text):
+            error = "Нужен HEX в формате #RRGGBB"
         elif pending == "background_color":
-            settings = await repository.update(
+            await repository.update(
                 user_id,
                 background_kind=BackgroundKind.COLOR,
                 background_color=text.upper(),
                 background_file_id=None,
             )
+            destination = "background"
         else:
-            settings = await repository.update(user_id, emoji_color=text.upper())
+            await repository.update(user_id, emoji_color=text.upper())
+            destination = "emoji_color"
     elif pending == "watermark":
-        if text.lower() == "нет":
-            settings = await repository.update(user_id, watermark_text=None)
+        if not text:
+            error = "Текст не может быть пустым"
+        elif len(text) > 64:
+            error = "Вотермарка должна быть не длиннее 64 символов"
         else:
-            parts = [part.strip() for part in text.rsplit("|", 1)]
-            if len(parts) != 2 or not parts[0] or parts[1].lower() not in _POSITION_ALIASES:
-                await message.answer(
-                    "Формат: <code>текст | снизу справа</code>. "
-                    "Позиции: сверху/снизу слева/справа, по центру."
-                )
-                return True
-            if len(parts[0]) > 64:
-                await message.answer("Вотермарка должна быть не длиннее 64 символов.")
-                return True
-            settings = await repository.update(
-                user_id,
-                watermark_text=parts[0],
-                watermark_position=_POSITION_ALIASES[parts[1].lower()],
-            )
+            await repository.update(user_id, watermark_text=text)
+            destination = "watermark"
     else:
         await repository.set_pending_action(user_id, None)
-        return False
+    await panel.delete_user_message(message)
+    if error:
+        await _show_pending_error(user_id, panel, pending, error)
+        return
     await repository.set_pending_action(user_id, None)
-    await message.answer(
-        "✅ Сохранено.",
-        reply_markup=main_keyboard(settings, app_settings),
+    if destination == "background":
+        await _show_background(user_id, repository, panel)
+    elif destination == "emoji_color":
+        await _show_emoji_color(user_id, repository, panel)
+    elif destination == "watermark":
+        await _show_watermark(user_id, repository, panel)
+    else:
+        await _show_main(user_id, user_id, repository, panel)
+
+
+async def _show_pending_error(
+    user_id: int,
+    panel: PanelService,
+    pending: str,
+    error: str,
+) -> None:
+    prompts = {
+        "background_color": (
+            "ЦВЕТ ФОНА",
+            "Отправь HEX-цвет, например <code>#FFFFFF</code>",
+            "brush",
+        ),
+        "background_media": ("МЕДИА-ФОН", "Отправь фото, видео или GIF-анимацию", "media"),
+        "emoji_color": (
+            "ЦВЕТ ЭМОДЗИ",
+            "Отправь HEX-цвет, например <code>#FFFFFF</code>",
+            "brush",
+        ),
+        "watermark": ("ТЕКСТ ВОТЕРМАРКИ", "Отправь текст длиной до 64 символов", "font"),
+    }
+    title, body, icon_name = prompts[pending]
+    await panel.show(
+        user_id,
+        user_id,
+        _screen_factory(
+            title,
+            body,
+            lambda premium: cancel_keyboard(premium=premium),
+            icon_name=icon_name,
+            error=error,
+        ),
     )
-    return True
 
 
-async def _send_result(message: Message, result: RenderedMedia) -> None:
-    media = FSInputFile(result.path)
+async def _show_input_error(user_id: int, panel: PanelService, error: str) -> None:
+    await panel.show(
+        user_id,
+        user_id,
+        _screen_factory(
+            "МАТЕРИАЛ НЕ РАСПОЗНАН",
+            "Поддерживаются premium emoji, стикеры и публичные ссылки на наборы.",
+            lambda premium: back_keyboard(premium=premium),
+            icon_name="cross",
+            error=error,
+        ),
+    )
+
+
+async def _show_rendering(user_id: int, panel: PanelService, text: str) -> None:
+    await panel.show(
+        user_id,
+        user_id,
+        _screen_factory(
+            "ОБРАБОТКА",
+            html.escape(text),
+            lambda premium: back_keyboard(premium=premium),
+            icon_name="settings",
+        ),
+    )
+
+
+async def _show_render_error(user_id: int, panel: PanelService, error: str) -> None:
+    await panel.show(
+        user_id,
+        user_id,
+        _screen_factory(
+            "ОШИБКА ОБРАБОТКИ",
+            "Не удалось собрать результат.",
+            lambda premium: back_keyboard(premium=premium),
+            icon_name="cross",
+            error=error,
+        ),
+    )
+
+
+async def _send_result(
+    bot: Bot,
+    chat_id: int,
+    result: RenderedMedia,
+    *,
+    preview: bool = False,
+) -> Message:
+    title = "Предпросмотр готов" if preview else "Готово"
     caption = (
-        f"✅ {result.metadata.width}×{result.metadata.height} · "
+        f"{icon('check')} <b>{title}</b>\n"
+        f"{result.metadata.width}×{result.metadata.height} · "
         f"{result.metadata.fps:g} FPS · {result.metadata.duration_seconds:.1f} сек."
     )
-    if result.output_format is OutputFormat.FILE:
-        await message.answer_document(media, caption=caption)
-    elif result.output_format is OutputFormat.VIDEO:
-        await message.answer_video(
-            media,
+    try:
+        return await bot.send_animation(
+            chat_id,
+            FSInputFile(result.path),
             caption=caption,
             width=result.metadata.width,
             height=result.metadata.height,
-            supports_streaming=True,
         )
-    else:
-        await message.answer_animation(
-            media,
-            caption=caption,
+    except TelegramBadRequest:
+        plain_caption = (
+            f"✅ <b>{title}</b>\n"
+            f"{result.metadata.width}×{result.metadata.height} · "
+            f"{result.metadata.fps:g} FPS · {result.metadata.duration_seconds:.1f} сек."
+        )
+        return await bot.send_animation(
+            chat_id,
+            FSInputFile(result.path),
+            caption=plain_caption,
             width=result.metadata.width,
             height=result.metadata.height,
         )
 
 
 @router.error()
-async def handle_error(event: ErrorEvent) -> bool:
+async def handle_error(event: ErrorEvent, panel: PanelService) -> bool:
     logger.exception("Unhandled Telegram update error", exc_info=event.exception)
-    if event.update.message:
-        await event.update.message.answer("❌ Внутренняя ошибка. Попробуй ещё раз чуть позже.")
+    message = event.update.message
+    if message and message.from_user:
+        await _show_render_error(message.from_user.id, panel, "Внутренняя ошибка")
     return True

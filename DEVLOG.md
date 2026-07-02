@@ -45,3 +45,11 @@
 
 - Removed user-facing format selection and kept Telegram GIF as silent H.264 MP4.
 - Added startup migration from legacy video, file and true-GIF preferences.
+
+## 2026-07-02 — Editable premium interface
+
+- Replaced menu message spam with one persistent SQLite-backed control panel.
+- Added premium custom emoji to interface text and button icons with a plain fallback.
+- Added compact settings screens with Back and red Cancel navigation.
+- User configuration messages are deleted after validation and errors stay inside the panel.
+- Persisted the last sticker selection for a separate preview workflow.

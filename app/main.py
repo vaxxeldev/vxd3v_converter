@@ -10,6 +10,7 @@ from aiogram.types import BotCommand
 
 from app.bot.downloader import AiogramFileDownloader
 from app.bot.handlers import router
+from app.bot.panel import PanelService
 from app.config import Settings, get_settings
 from app.repositories import SettingsRepository
 from app.services.conversion import ConversionService
@@ -49,6 +50,7 @@ async def main() -> None:
         probe,
         RenderCache(settings.cache_root, settings.max_cache_bytes),
     )
+    panel = PanelService(bot, repository, settings)
     dispatcher = Dispatcher()
     dispatcher.include_router(router)
     await bot.set_my_commands(
@@ -62,6 +64,7 @@ async def main() -> None:
             bot,
             repository=repository,
             conversion=conversion,
+            panel=panel,
             app_settings=settings,
             allowed_updates=dispatcher.resolve_used_update_types(),
         )
