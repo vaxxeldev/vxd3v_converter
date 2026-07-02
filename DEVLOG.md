@@ -70,3 +70,11 @@
 - Added start, wallet, top-up, size and resolution banners at 1920×530 and 60 FPS.
 - Added memory plus SQLite `file_id` caching with SHA-256 invalidation and stale-ID recovery.
 - Added the requested custom hourglass emoji to render status screens.
+
+## 2026-07-02 — Manual balance payments
+
+- Added direct-transfer top-ups with validated amounts, receipt uploads and admin review.
+- Added atomic, one-time balance credits and explicit user notifications after approval.
+- Added paid render reservations with automatic refunds after failed or interrupted renders.
+- Added free full-quality previews with a forced semi-transparent centered `vxd3v` watermark.
+- Added a YooKassa placeholder for the future provider integration.

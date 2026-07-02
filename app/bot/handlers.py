@@ -22,12 +22,16 @@ from app.bot.keyboards import (
     watermark_keyboard,
 )
 from app.bot.panel import PanelService
+from app.bot.payment_handlers import process_payment_input, show_wallet_panel
 from app.bot.sources import extract_sources
 from app.bot.texts import icon, main_text, screen_text
+from app.config import Settings
 from app.models import BackgroundKind, UserSettings, WatermarkPosition
-from app.repositories import SettingsRepository
+from app.repositories import PaymentRepository, SettingsRepository
 from app.services.conversion import ConversionService, RenderedMedia
-from app.services.errors import ConversionError
+from app.services.errors import ConversionError, InsufficientBalanceError
+from app.services.payments import format_rubles
+from app.services.preview import preview_settings
 
 logger = logging.getLogger(__name__)
 router = Router(name="converter")
@@ -137,39 +141,14 @@ async def show_wallet(
     callback: CallbackQuery,
     repository: SettingsRepository,
     panel: PanelService,
+    app_settings: Settings,
 ) -> None:
     await callback.answer()
-    settings = await repository.get(callback.from_user.id)
-    body = (
-        f"Текущий баланс: <b>{settings.balance_kopecks / 100:.2f} ₽</b>\n\n"
-        "Пополнение и стоимость генерации появятся на следующем этапе."
-    )
-    await panel.show(
+    await show_wallet_panel(
         callback.from_user.id,
-        callback.from_user.id,
-        _screen_factory(
-            "КОШЕЛЁК",
-            body,
-            lambda premium: wallet_keyboard(premium=premium),
-            icon_name="wallet",
-        ),
-        banner="wallet",
-    )
-
-
-@router.callback_query(F.data == "menu:topup")
-async def show_topup(callback: CallbackQuery, panel: PanelService) -> None:
-    await callback.answer()
-    await panel.show(
-        callback.from_user.id,
-        callback.from_user.id,
-        _screen_factory(
-            "ПОПОЛНЕНИЕ БАЛАНСА",
-            "Способы пополнения появятся на следующем этапе.",
-            lambda premium: back_keyboard(premium=premium),
-            icon_name="wallet",
-        ),
-        banner="topup",
+        repository,
+        panel,
+        app_settings,
     )
 
 
@@ -188,7 +167,7 @@ async def _show_resolution(
     repository: SettingsRepository,
     panel: PanelService,
 ) -> None:
-    settings = await repository.get(user_id)
+    settings = preview_settings(await repository.get(user_id))
     await panel.show(
         user_id,
         user_id,
@@ -341,7 +320,7 @@ async def request_input(
         ),
         "background_media": (
             "МЕДИА-ФОН",
-            "Отправь фотографию, видео или GIF-анимацию.",
+            "Отправь фотографию, видео или GIF.",
             "media",
         ),
         "emoji_color": (
@@ -491,7 +470,7 @@ async def preview(
         )
         return
     settings = await repository.get(user_id)
-    await _show_rendering(user_id, panel, "Собираю предпросмотр в 60 FPS…")
+    await _show_rendering(user_id, panel, "Собираю предпросмотр…")
     await bot.send_chat_action(user_id, ChatAction.UPLOAD_VIDEO)
     try:
         async with conversion.convert(settings, sources) as result:
@@ -514,14 +493,26 @@ async def process_message(
     message: Message,
     bot: Bot,
     repository: SettingsRepository,
+    payment_repository: PaymentRepository,
     conversion: ConversionService,
     panel: PanelService,
+    app_settings: Settings,
 ) -> None:
     if not message.from_user:
         return
     user_id = message.from_user.id
     pending = await repository.get_pending_action(user_id)
     if pending:
+        if await process_payment_input(
+            message,
+            pending,
+            bot,
+            payment_repository,
+            repository,
+            panel,
+            app_settings,
+        ):
+            return
         await _process_pending(message, repository, panel, pending)
         return
     try:
@@ -541,14 +532,38 @@ async def process_message(
     await repository.set_sources(user_id, sources)
     await panel.delete_user_message(message)
     settings = await repository.get(user_id)
-    await _show_rendering(user_id, panel, "Рисую все кадры в 60 FPS…")
+    try:
+        order = await payment_repository.charge_render(
+            user_id,
+            app_settings.render_price_kopecks,
+        )
+    except InsufficientBalanceError:
+        await panel.show(
+            user_id,
+            user_id,
+            _screen_factory(
+                "НЕДОСТАТОЧНО СРЕДСТВ",
+                "Пополните баланс, чтобы получить готовый рендер.\n"
+                f"Стоимость: <code>{format_rubles(app_settings.render_price_kopecks)}</code>",
+                lambda premium: wallet_keyboard(premium=premium),
+                icon_name="wallet",
+            ),
+            banner="wallet",
+        )
+        return
+    await _show_rendering(user_id, panel, "Рисую результат…")
     await bot.send_chat_action(user_id, ChatAction.UPLOAD_VIDEO)
     try:
         async with conversion.convert(settings, sources) as result:
             await _send_result(bot, user_id, result)
     except ConversionError as error:
+        await payment_repository.refund_render(order.id)
         await _show_render_error(user_id, panel, str(error))
         return
+    except BaseException:
+        await payment_repository.refund_render(order.id)
+        raise
+    await payment_repository.complete_render(order.id)
     await _show_main(user_id, user_id, repository, panel)
 
 
@@ -631,7 +646,7 @@ async def _show_pending_error(
             "Отправь HEX-цвет, например <code>#FFFFFF</code>",
             "brush",
         ),
-        "background_media": ("МЕДИА-ФОН", "Отправь фото, видео или GIF-анимацию", "media"),
+        "background_media": ("МЕДИА-ФОН", "Отправь фото, видео или GIF.", "media"),
         "emoji_color": (
             "ЦВЕТ ЭМОДЗИ",
             "Отправь HEX-цвет, например <code>#FFFFFF</code>",

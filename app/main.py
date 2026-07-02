@@ -12,8 +12,9 @@ from app.bot.banners import BannerService
 from app.bot.downloader import AiogramFileDownloader
 from app.bot.handlers import router
 from app.bot.panel import PanelService
+from app.bot.payment_handlers import router as payment_router
 from app.config import Settings, get_settings
-from app.repositories import SettingsRepository
+from app.repositories import PaymentRepository, SettingsRepository
 from app.services.conversion import ConversionService
 from app.services.media_probe import MediaProbe
 from app.services.media_renderer import MediaRenderer
@@ -40,6 +41,9 @@ async def main() -> None:
     )
     repository = SettingsRepository(settings.database_path)
     await repository.initialize()
+    payment_repository = PaymentRepository(settings.database_path)
+    await payment_repository.initialize()
+    await payment_repository.refund_interrupted_renders()
     runner = ProcessRunner()
     probe = MediaProbe(settings, runner)
     renderer = MediaRenderer(settings, runner, probe)
@@ -54,6 +58,7 @@ async def main() -> None:
     banner_service = BannerService(settings, repository)
     panel = PanelService(bot, repository, settings, banner_service)
     dispatcher = Dispatcher()
+    dispatcher.include_router(payment_router)
     dispatcher.include_router(router)
     await bot.set_my_commands(
         [
@@ -65,6 +70,7 @@ async def main() -> None:
         await dispatcher.start_polling(
             bot,
             repository=repository,
+            payment_repository=payment_repository,
             conversion=conversion,
             panel=panel,
             app_settings=settings,

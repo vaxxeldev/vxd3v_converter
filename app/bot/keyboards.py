@@ -19,6 +19,8 @@ ICONS = {
     "format": "5778479949572738874",
     "down": "5893057118545646106",
     "hourglass": "5296482716567495148",
+    "money": "5904462880941545555",
+    "send_money": "5890848474563352982",
 }
 
 
@@ -86,6 +88,56 @@ def wallet_keyboard(*, premium: bool = True) -> InlineKeyboardMarkup:
                 )
             ],
             [button("Назад", "menu:main", icon="home", premium=premium)],
+        ]
+    )
+
+
+def payment_methods_keyboard(*, premium: bool = True) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                button(
+                    "Прямой перевод",
+                    "payment:direct",
+                    style="primary",
+                    icon="send_money",
+                    premium=premium,
+                )
+            ],
+            [button("ЮКасса", "payment:yookassa", icon="money", premium=premium)],
+            [button("Назад", "menu:wallet", icon="home", premium=premium)],
+        ]
+    )
+
+
+def payment_cancel_keyboard(payment_id: str, *, premium: bool = True) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                button(
+                    "Отменить",
+                    f"payment:cancel:{payment_id}",
+                    style="danger",
+                    icon="cross",
+                    premium=premium,
+                )
+            ]
+        ]
+    )
+
+
+def admin_confirm_keyboard(payment_id: str, *, premium: bool = True) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                button(
+                    "Подтвердить",
+                    f"admin:approve:{payment_id}",
+                    style="success",
+                    icon="check",
+                    premium=premium,
+                )
+            ]
         ]
     )
 

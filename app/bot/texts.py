@@ -20,6 +20,7 @@ _FALLBACKS = {
     "format": "📐",
     "down": "⬇️",
     "hourglass": "⌛",
+    "money": "💵",
 }
 
 

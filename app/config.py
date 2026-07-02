@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     max_queue_size: int = Field(default=20, ge=1, le=500)
     max_cache_bytes: int = Field(default=512 * 1024 * 1024, ge=16 * 1024 * 1024)
     enable_custom_button_emoji: bool = True
+    admin_id: int | None = None
+    render_price_kopecks: int = Field(default=1000, ge=100)
+    min_topup_kopecks: int = Field(default=1000, ge=100)
+    direct_payment_bank: str = "ВТБ"
+    direct_payment_requisites: SecretStr | None = None
+    direct_payment_recipient: str | None = None
 
     @field_validator("log_level")
     @classmethod
