@@ -10,4 +10,5 @@ def preview_settings(settings: UserSettings) -> UserSettings:
         settings,
         watermark_text="vxd3v",
         watermark_position=WatermarkPosition.CENTER,
+        watermark_font_scale=0.10,
     )

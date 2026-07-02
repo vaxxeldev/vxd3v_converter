@@ -239,6 +239,34 @@ class PaymentRepository:
             await connection.commit()
         return RenderOrder(order_id, user_id, amount_kopecks)
 
+    async def admin_credit(self, user_id: int, amount_kopecks: int) -> int:
+        if amount_kopecks <= 0:
+            raise PaymentStateError("Сумма начисления должна быть больше нуля.")
+        reference_id = uuid.uuid4().hex
+        async with aiosqlite.connect(self._database_path) as connection:
+            await connection.execute("BEGIN IMMEDIATE")
+            cursor = await connection.execute(
+                "UPDATE user_settings SET balance_kopecks = balance_kopecks + ? "
+                "WHERE user_id = ?",
+                (amount_kopecks, user_id),
+            )
+            if cursor.rowcount != 1:
+                await connection.rollback()
+                raise PaymentStateError("Пользователь не найден.")
+            await connection.execute(
+                "INSERT INTO balance_transactions "
+                "(id, user_id, amount_kopecks, kind, reference_id) "
+                "VALUES (?, ?, ?, 'admin_credit', ?)",
+                (uuid.uuid4().hex, user_id, amount_kopecks, reference_id),
+            )
+            balance_cursor = await connection.execute(
+                "SELECT balance_kopecks FROM user_settings WHERE user_id = ?",
+                (user_id,),
+            )
+            balance = await balance_cursor.fetchone()
+            await connection.commit()
+        return int(balance[0])
+
     async def complete_render(self, order_id: str) -> None:
         async with aiosqlite.connect(self._database_path) as connection:
             await connection.execute(

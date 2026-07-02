@@ -48,6 +48,7 @@ class UserSettings:
     emoji_color: str | None = None
     watermark_text: str | None = None
     watermark_position: WatermarkPosition = WatermarkPosition.BOTTOM_RIGHT
+    watermark_font_scale: float = 0.04
 
 
 @dataclass(slots=True, frozen=True)
@@ -83,4 +84,3 @@ class RenderRequest:
     background_path: Path | None = None
     duration_seconds: float = 3.0
     output_path: Path = field(default_factory=lambda: Path("result.mp4"))
-

@@ -78,3 +78,10 @@
 - Added paid render reservations with automatic refunds after failed or interrupted renders.
 - Added free full-quality previews with a forced semi-transparent centered `vxd3v` watermark.
 - Added a YooKassa placeholder for the future provider integration.
+
+## 2026-07-02 — Payment hotfix and admin credits
+
+- Fixed direct-transfer callbacks by exposing the settings repository under the expected DI key.
+- Added admin-only `.пополнить @username сумма` balance credits with an auditable ledger entry.
+- Added normalized username tracking for users who interact with the bot.
+- Increased the free preview's centered `vxd3v` watermark from 4% to 10% of canvas height.

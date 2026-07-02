@@ -6,7 +6,7 @@ import re
 
 from aiogram import Bot, F, Router
 from aiogram.enums import ChatAction
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, ErrorEvent, FSInputFile, Message
 
@@ -29,13 +29,17 @@ from app.config import Settings
 from app.models import BackgroundKind, UserSettings, WatermarkPosition
 from app.repositories import PaymentRepository, SettingsRepository
 from app.services.conversion import ConversionService, RenderedMedia
-from app.services.errors import ConversionError, InsufficientBalanceError
-from app.services.payments import format_rubles
+from app.services.errors import ConversionError, InsufficientBalanceError, PaymentStateError
+from app.services.payments import format_rubles, parse_rubles
 from app.services.preview import preview_settings
 
 logger = logging.getLogger(__name__)
 router = Router(name="converter")
 _HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_ADMIN_CREDIT = re.compile(
+    r"^\.пополнить\s+@([A-Za-z0-9_]{5,32})\s+([0-9]+(?:[.,][0-9]{1,2})?)$",
+    re.IGNORECASE,
+)
 _POSITIONS = {item.value: item for item in WatermarkPosition}
 _POSITION_LABELS = {
     WatermarkPosition.TOP_LEFT: "сверху слева",
@@ -91,6 +95,7 @@ async def start(
 ) -> None:
     if not message.from_user:
         return
+    await repository.remember_username(message.from_user.id, message.from_user.username)
     await repository.set_pending_action(message.from_user.id, None)
     await panel.delete_user_message(message)
     settings = await repository.get(message.from_user.id)
@@ -501,6 +506,16 @@ async def process_message(
     if not message.from_user:
         return
     user_id = message.from_user.id
+    await repository.remember_username(user_id, message.from_user.username)
+    if (message.text or "").casefold().startswith(".пополнить"):
+        await _process_admin_credit(
+            message,
+            bot,
+            repository,
+            payment_repository,
+            app_settings,
+        )
+        return
     pending = await repository.get_pending_action(user_id)
     if pending:
         if await process_payment_input(
@@ -565,6 +580,50 @@ async def process_message(
         raise
     await payment_repository.complete_render(order.id)
     await _show_main(user_id, user_id, repository, panel)
+
+
+async def _process_admin_credit(
+    message: Message,
+    bot: Bot,
+    repository: SettingsRepository,
+    payment_repository: PaymentRepository,
+    app_settings: Settings,
+) -> None:
+    if not message.from_user or message.from_user.id != app_settings.admin_id:
+        await message.answer("Команда недоступна.")
+        return
+    match = _ADMIN_CREDIT.fullmatch((message.text or "").strip())
+    if match is None:
+        await message.answer("Формат: <code>.пополнить @username сумма</code>")
+        return
+    username, raw_amount = match.groups()
+    try:
+        amount = parse_rubles(raw_amount, 100)
+    except PaymentStateError as error:
+        await message.answer(html.escape(str(error)))
+        return
+    target_user_id = await repository.find_user_id_by_username(username)
+    if target_user_id is None:
+        await message.answer(
+            "Пользователь не найден. Он должен сначала написать боту после обновления."
+        )
+        return
+    balance = await payment_repository.admin_credit(target_user_id, amount)
+    formatted_amount = format_rubles(amount)
+    await message.answer(
+        f"Баланс <b>@{html.escape(username)}</b> пополнен на "
+        f"<code>{formatted_amount}</code>.\n"
+        f"Текущий баланс: <code>{format_rubles(balance)}</code>."
+    )
+    try:
+        await bot.send_message(
+            target_user_id,
+            f"{icon('check')} <b>Администратор пополнил ваш баланс на "
+            f"{formatted_amount}</b>\n"
+            f"Текущий баланс: <code>{format_rubles(balance)}</code>",
+        )
+    except (TelegramBadRequest, TelegramForbiddenError):
+        pass
 
 
 async def _process_pending(

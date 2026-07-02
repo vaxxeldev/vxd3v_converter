@@ -126,4 +126,31 @@ def test_preview_forces_centered_vxd3v_watermark() -> None:
 
     assert preview.watermark_text == "vxd3v"
     assert preview.watermark_position is WatermarkPosition.CENTER
+    assert preview.watermark_font_scale == 0.10
     assert source.watermark_text == "custom"
+
+
+async def test_admin_credit_updates_balance_and_ledger(tmp_path: Path) -> None:
+    settings, payments = await _repositories(tmp_path)
+    await settings.get(50)
+
+    balance = await payments.admin_credit(50, 1250)
+
+    assert balance == 1250
+    assert (await settings.get(50)).balance_kopecks == 1250
+    async with aiosqlite.connect(tmp_path / "bot.sqlite3") as connection:
+        cursor = await connection.execute(
+            "SELECT amount_kopecks FROM balance_transactions "
+            "WHERE user_id = 50 AND kind = 'admin_credit'"
+        )
+        assert await cursor.fetchone() == (1250,)
+
+
+async def test_username_is_normalized_and_reassigned(tmp_path: Path) -> None:
+    settings, _ = await _repositories(tmp_path)
+    await settings.remember_username(60, "Some_User")
+    assert await settings.find_user_id_by_username("@some_user") == 60
+
+    await settings.remember_username(61, "SOME_USER")
+
+    assert await settings.find_user_id_by_username("some_user") == 61

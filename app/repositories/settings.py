@@ -94,6 +94,37 @@ class SettingsRepository:
             await connection.execute(
                 "ALTER TABLE user_settings ADD COLUMN panel_banner TEXT"
             )
+        if "username" not in columns:
+            await connection.execute("ALTER TABLE user_settings ADD COLUMN username TEXT")
+            await connection.execute(
+                "CREATE INDEX IF NOT EXISTS user_settings_username ON user_settings(username)"
+            )
+
+    async def remember_username(self, user_id: int, username: str | None) -> None:
+        await self.get(user_id)
+        normalized = username.casefold() if username else None
+        async with aiosqlite.connect(self._database_path) as connection:
+            await connection.execute("BEGIN IMMEDIATE")
+            if normalized:
+                await connection.execute(
+                    "UPDATE user_settings SET username = NULL WHERE username = ? AND user_id <> ?",
+                    (normalized, user_id),
+                )
+            await connection.execute(
+                "UPDATE user_settings SET username = ? WHERE user_id = ?",
+                (normalized, user_id),
+            )
+            await connection.commit()
+
+    async def find_user_id_by_username(self, username: str) -> int | None:
+        normalized = username.removeprefix("@").casefold()
+        async with aiosqlite.connect(self._database_path) as connection:
+            cursor = await connection.execute(
+                "SELECT user_id FROM user_settings WHERE username = ?",
+                (normalized,),
+            )
+            row = await cursor.fetchone()
+        return None if row is None else int(row[0])
 
     async def get(self, user_id: int) -> UserSettings:
         async with aiosqlite.connect(self._database_path) as connection:

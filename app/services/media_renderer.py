@@ -206,7 +206,7 @@ class MediaRenderer:
             text_path = request.output_path.parent / "watermark.txt"
             text_path.write_text(settings.watermark_text, encoding="utf-8")
             x, y = self._watermark_coordinates(settings.watermark_position.value)
-            font_size = max(12, int(height * 0.04))
+            font_size = max(12, int(height * settings.watermark_font_scale))
             filters.append(
                 f"[{current}]drawtext=fontfile='{self._escape_path(self._settings.font_file)}':"
                 f"textfile='{self._escape_path(text_path)}':fontcolor=white@0.78:"

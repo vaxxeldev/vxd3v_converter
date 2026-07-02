@@ -70,6 +70,7 @@ async def main() -> None:
         await dispatcher.start_polling(
             bot,
             repository=repository,
+            settings_repository=repository,
             payment_repository=payment_repository,
             conversion=conversion,
             panel=panel,
