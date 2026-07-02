@@ -63,3 +63,10 @@
 
 - Explicit `/start` now recreates the control panel instead of trusting a stale message ID.
 - Added regression coverage for clearing Telegram chat history and starting again.
+
+## 2026-07-02 — Cached animated banners
+
+- Converted the persistent control panel to a Telegram animation with editable captions.
+- Added start, wallet, top-up, size and resolution banners at 1920×530 and 60 FPS.
+- Added memory plus SQLite `file_id` caching with SHA-256 invalidation and stale-ID recovery.
+- Added the requested custom hourglass emoji to render status screens.

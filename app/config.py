@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     database_path: Path = Path("/app/data/bot.sqlite3")
     temp_root: Path = Path(tempfile.gettempdir()) / "vxd3v-converter"
     cache_root: Path = Path("/app/data/cache")
+    banner_root: Path = Path("banners")
     ffmpeg_bin: str = "ffmpeg"
     ffprobe_bin: str = "ffprobe"
     rlottie_renderer_bin: str = "/usr/local/bin/tgs-renderer"

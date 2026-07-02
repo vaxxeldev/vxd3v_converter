@@ -18,6 +18,7 @@ ICONS = {
     "font": "5870801517140775623",
     "format": "5778479949572738874",
     "down": "5893057118545646106",
+    "hourglass": "5296482716567495148",
 }
 
 
@@ -67,6 +68,23 @@ def main_keyboard(settings: UserSettings, *, premium: bool = True) -> InlineKeyb
 def back_keyboard(*, premium: bool = True) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [button("Назад", "menu:main", icon="home", premium=premium)],
+        ]
+    )
+
+
+def wallet_keyboard(*, premium: bool = True) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                button(
+                    "Пополнить",
+                    "menu:topup",
+                    style="primary",
+                    icon="wallet",
+                    premium=premium,
+                )
+            ],
             [button("Назад", "menu:main", icon="home", premium=premium)],
         ]
     )

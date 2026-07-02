@@ -58,6 +58,12 @@ class SettingsRepository:
                     pending_action TEXT,
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
+                CREATE TABLE IF NOT EXISTS banner_cache (
+                    banner_key TEXT PRIMARY KEY,
+                    sha256 TEXT NOT NULL,
+                    file_id TEXT NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
                 UPDATE user_settings
                 SET output_format = 'animation'
                 WHERE output_format <> 'animation';
@@ -83,6 +89,10 @@ class SettingsRepository:
         if "last_sources_json" not in columns:
             await connection.execute(
                 "ALTER TABLE user_settings ADD COLUMN last_sources_json TEXT"
+            )
+        if "panel_banner" not in columns:
+            await connection.execute(
+                "ALTER TABLE user_settings ADD COLUMN panel_banner TEXT"
             )
 
     async def get(self, user_id: int) -> UserSettings:
@@ -164,9 +174,58 @@ class SettingsRepository:
         await self.get(user_id)
         async with aiosqlite.connect(self._database_path) as connection:
             await connection.execute(
-                "UPDATE user_settings SET panel_chat_id = NULL, panel_message_id = NULL "
+                "UPDATE user_settings SET panel_chat_id = NULL, panel_message_id = NULL, "
+                "panel_banner = NULL "
                 "WHERE user_id = ?",
                 (user_id,),
+            )
+            await connection.commit()
+
+    async def set_panel_banner(self, user_id: int, banner_key: str) -> None:
+        await self.get(user_id)
+        async with aiosqlite.connect(self._database_path) as connection:
+            await connection.execute(
+                "UPDATE user_settings SET panel_banner = ? WHERE user_id = ?",
+                (banner_key, user_id),
+            )
+            await connection.commit()
+
+    async def get_panel_banner(self, user_id: int) -> str | None:
+        await self.get(user_id)
+        async with aiosqlite.connect(self._database_path) as connection:
+            cursor = await connection.execute(
+                "SELECT panel_banner FROM user_settings WHERE user_id = ?",
+                (user_id,),
+            )
+            row = await cursor.fetchone()
+        return None if row is None else row[0]
+
+    async def get_banner_cache(self, banner_key: str) -> tuple[str, str] | None:
+        async with aiosqlite.connect(self._database_path) as connection:
+            cursor = await connection.execute(
+                "SELECT sha256, file_id FROM banner_cache WHERE banner_key = ?",
+                (banner_key,),
+            )
+            row = await cursor.fetchone()
+        if row is None:
+            return None
+        return str(row[0]), str(row[1])
+
+    async def set_banner_cache(self, banner_key: str, sha256: str, file_id: str) -> None:
+        async with aiosqlite.connect(self._database_path) as connection:
+            await connection.execute(
+                "INSERT INTO banner_cache (banner_key, sha256, file_id) VALUES (?, ?, ?) "
+                "ON CONFLICT(banner_key) DO UPDATE SET sha256 = excluded.sha256, "
+                "file_id = excluded.file_id, updated_at = CURRENT_TIMESTAMP",
+                (banner_key, sha256, file_id),
+            )
+            await connection.commit()
+
+    async def delete_banner_cache(self, banner_key: str) -> None:
+        async with aiosqlite.connect(self._database_path) as connection:
+            await connection.execute(
+                "DELETE FROM banner_cache WHERE banner_key = ?",
+                (banner_key,),
             )
             await connection.commit()
 

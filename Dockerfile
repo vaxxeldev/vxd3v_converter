@@ -32,6 +32,7 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     DATABASE_PATH=/app/data/bot.sqlite3 \
     CACHE_ROOT=/app/data/cache \
+    BANNER_ROOT=/usr/src/app/banners \
     TEMP_ROOT=/tmp/vxd3v-converter \
     RLOTTIE_RENDERER_BIN=/usr/local/bin/tgs-renderer
 
@@ -48,6 +49,7 @@ RUN python -m pip install /wheels/*.whl \
 
 COPY --from=builder /usr/local/bin/tgs-renderer /usr/local/bin/tgs-renderer
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint
+COPY banners /usr/src/app/banners
 RUN chmod 0755 /usr/local/bin/tgs-renderer /usr/local/bin/docker-entrypoint
 
 WORKDIR /usr/src/app

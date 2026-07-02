@@ -19,6 +19,7 @@ _FALLBACKS = {
     "font": "🔤",
     "format": "📐",
     "down": "⬇️",
+    "hourglass": "⌛",
 }
 
 
@@ -35,22 +36,24 @@ def main_text(settings: UserSettings, *, premium: bool = True) -> str:
         if settings.background_kind is BackgroundKind.COLOR
         else "своё медиа"
     )
-    emoji_color = settings.emoji_color or "автоматический"
+    emoji_color = settings.emoji_color or "авто"
     watermark = html.escape(settings.watermark_text or "выключена")
     return (
-        f"{icon('settings', premium=premium)} <b>VXD3V CONVERTER</b>\n\n"
+        f"{icon('settings', premium=premium)} <b>VXD3V CONVERTER</b>\n"
         "Создавай пиздатое оформления для ботов, каналов и сайтов.\n\n"
-        f"{icon('attach', premium=premium)} <b>Отправь мне:</b>\n\n"
+        f"{icon('attach', premium=premium)} <b>Отправь мне:</b>\n"
         "<blockquote>Отправь премиум-эмодзи, стикер или ссылку на набор.</blockquote>\n\n"
-        f"{icon('settings', premium=premium)} <b>Конфигурация:</b>\n\n"
+        f"{icon('settings', premium=premium)} <b>Конфигурация:</b>\n"
         "<blockquote>"
-        f"{icon('brush', premium=premium)} Фон: {html.escape(background)}\n"
-        f"{icon('format', premium=premium)} Холст: "
-        f"{settings.width}×{settings.height} · {settings.fps} FPS\n"
-        f"{icon('settings', premium=premium)} Размер: {settings.emoji_size_percent}%\n"
-        f"{icon('brush', premium=premium)} Цвет эмодзи: {html.escape(emoji_color)}\n"
-        f"{icon('font', premium=premium)} Вотермарка: {watermark}\n"
-        f"{icon('media', premium=premium)} Формат: GIF в Telegram · MP4"
+        f"{icon('brush', premium=premium)} <b>Фон:</b> <code>{html.escape(background)}</code>\n"
+        f"{icon('format', premium=premium)} <b>Холст:</b> "
+        f"<code>{settings.width}×{settings.height} · {settings.fps} FPS</code>\n"
+        f"{icon('settings', premium=premium)} <b>Размер:</b> "
+        f"<code>{settings.emoji_size_percent}%</code>\n"
+        f"{icon('brush', premium=premium)} <b>Цвет эмодзи:</b> "
+        f"<code>{html.escape(emoji_color)}</code>\n"
+        f"{icon('font', premium=premium)} <b>Вотермарка:</b> <code>{watermark}</code>\n"
+        f"{icon('media', premium=premium)} <b>Формат:</b> <code>GIF в Telegram</code>"
         "</blockquote>"
     )
 

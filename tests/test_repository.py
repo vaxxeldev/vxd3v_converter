@@ -99,3 +99,17 @@ async def test_corrupt_source_draft_is_ignored(tmp_path: Path) -> None:
         await connection.commit()
 
     assert await repository.get_sources(12) == []
+
+
+async def test_banner_cache_and_current_panel_banner_persist(tmp_path: Path) -> None:
+    database = tmp_path / "bot.sqlite3"
+    first = SettingsRepository(database)
+    await first.initialize()
+    await first.set_panel_banner(1, "wallet")
+    await first.set_banner_cache("wallet", "sha-value", "file-id")
+
+    second = SettingsRepository(database)
+    await second.initialize()
+
+    assert await second.get_panel_banner(1) == "wallet"
+    assert await second.get_banner_cache("wallet") == ("sha-value", "file-id")

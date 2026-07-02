@@ -18,6 +18,7 @@ from app.bot.keyboards import (
     main_keyboard,
     resolution_keyboard,
     size_keyboard,
+    wallet_keyboard,
     watermark_keyboard,
 )
 from app.bot.panel import PanelService
@@ -75,7 +76,7 @@ async def _show_main(
     panel: PanelService,
 ) -> None:
     settings = await repository.get(user_id)
-    await panel.show(user_id, chat_id, _main_factory(settings))
+    await panel.show(user_id, chat_id, _main_factory(settings), banner="start")
 
 
 @router.message(CommandStart())
@@ -149,9 +150,26 @@ async def show_wallet(
         _screen_factory(
             "КОШЕЛЁК",
             body,
+            lambda premium: wallet_keyboard(premium=premium),
+            icon_name="wallet",
+        ),
+        banner="wallet",
+    )
+
+
+@router.callback_query(F.data == "menu:topup")
+async def show_topup(callback: CallbackQuery, panel: PanelService) -> None:
+    await callback.answer()
+    await panel.show(
+        callback.from_user.id,
+        callback.from_user.id,
+        _screen_factory(
+            "ПОПОЛНЕНИЕ БАЛАНСА",
+            "Способы пополнения появятся на следующем этапе.",
             lambda premium: back_keyboard(premium=premium),
             icon_name="wallet",
         ),
+        banner="topup",
     )
 
 
@@ -181,6 +199,7 @@ async def _show_resolution(
             lambda premium: resolution_keyboard(settings, premium=premium),
             icon_name="format",
         ),
+        banner="resolution",
     )
 
 
@@ -209,6 +228,7 @@ async def _show_size(
             f"Сейчас: <code>{settings.emoji_size_percent}%</code>",
             lambda premium: size_keyboard(settings, premium=premium),
         ),
+        banner="size",
     )
 
 
@@ -467,6 +487,7 @@ async def preview(
                 lambda premium: back_keyboard(premium=premium),
                 icon_name="eye",
             ),
+            banner=None,
         )
         return
     settings = await repository.get(user_id)
@@ -654,8 +675,9 @@ async def _show_rendering(user_id: int, panel: PanelService, text: str) -> None:
             "ОБРАБОТКА",
             html.escape(text),
             lambda premium: back_keyboard(premium=premium),
-            icon_name="settings",
+            icon_name="hourglass",
         ),
+        banner=None,
     )
 
 
@@ -670,6 +692,7 @@ async def _show_render_error(user_id: int, panel: PanelService, error: str) -> N
             icon_name="cross",
             error=error,
         ),
+        banner=None,
     )
 
 

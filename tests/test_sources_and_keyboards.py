@@ -4,7 +4,7 @@ from aiogram.types import File, Sticker
 
 from app.bot.keyboards import cancel_keyboard, main_keyboard
 from app.bot.sources import _from_sticker
-from app.bot.texts import main_text
+from app.bot.texts import icon, main_text
 from app.models import StickerKind, UserSettings
 
 
@@ -64,3 +64,10 @@ def test_cancel_button_is_red_and_has_premium_icon() -> None:
     assert cancel.callback_data == "action:cancel"
     assert cancel.style == "danger"
     assert cancel.icon_custom_emoji_id is not None
+
+
+def test_rendering_hourglass_uses_requested_custom_emoji() -> None:
+    hourglass = icon("hourglass", premium=True)
+
+    assert "5296482716567495148" in hourglass
+    assert "⌛" in hourglass

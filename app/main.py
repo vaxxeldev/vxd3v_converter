@@ -8,6 +8,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import BotCommand
 
+from app.bot.banners import BannerService
 from app.bot.downloader import AiogramFileDownloader
 from app.bot.handlers import router
 from app.bot.panel import PanelService
@@ -50,7 +51,8 @@ async def main() -> None:
         probe,
         RenderCache(settings.cache_root, settings.max_cache_bytes),
     )
-    panel = PanelService(bot, repository, settings)
+    banner_service = BannerService(settings, repository)
+    panel = PanelService(bot, repository, settings, banner_service)
     dispatcher = Dispatcher()
     dispatcher.include_router(router)
     await bot.set_my_commands(
