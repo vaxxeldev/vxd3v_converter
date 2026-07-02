@@ -74,3 +74,20 @@ async def test_user_input_can_be_deleted_without_reply(tmp_path: Path) -> None:
 
     assert bot.deleted == [55]
     assert bot.sent == 0
+
+
+async def test_explicit_start_recreates_panel_after_chat_history_clear(
+    tmp_path: Path,
+) -> None:
+    repository = SettingsRepository(tmp_path / "bot.sqlite3")
+    await repository.initialize()
+    await repository.set_panel(1, 1, 77)
+    bot = FakeBot()
+    panel = PanelService(bot, repository, Settings())  # type: ignore[arg-type]
+
+    await panel.recreate(1, 1, _factory)
+
+    assert bot.deleted == [77]
+    assert bot.edited == 0
+    assert bot.sent == 1
+    assert await repository.get_panel(1) == (1, 100)

@@ -43,6 +43,21 @@ class PanelService:
             raise last_error
         return None
 
+    async def recreate(
+        self,
+        user_id: int,
+        chat_id: int,
+        factory: ContentFactory,
+    ) -> Message | None:
+        panel = await self._repository.get_panel(user_id)
+        if panel and panel[0] == chat_id:
+            try:
+                await self._bot.delete_message(chat_id, panel[1])
+            except TelegramBadRequest:
+                pass
+        await self._repository.clear_panel(user_id)
+        return await self.show(user_id, chat_id, factory)
+
     async def _upsert(
         self,
         user_id: int,

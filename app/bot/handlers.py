@@ -88,7 +88,12 @@ async def start(
         return
     await repository.set_pending_action(message.from_user.id, None)
     await panel.delete_user_message(message)
-    await _show_main(message.from_user.id, message.chat.id, repository, panel)
+    settings = await repository.get(message.from_user.id)
+    await panel.recreate(
+        message.from_user.id,
+        message.chat.id,
+        _main_factory(settings),
+    )
 
 
 @router.message(Command("cancel"))

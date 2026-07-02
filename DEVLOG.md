@@ -58,3 +58,8 @@
 
 - Reworked the main panel into compact Send and Configuration blockquotes.
 - Kept premium emoji while making the supplied Russian copy and hierarchy exact.
+
+## 2026-07-02 — Panel recovery after chat clear
+
+- Explicit `/start` now recreates the control panel instead of trusting a stale message ID.
+- Added regression coverage for clearing Telegram chat history and starting again.
