@@ -11,7 +11,6 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, ErrorEvent, FSInputFile, Message
 
 from app.bot.keyboards import (
-    format_keyboard,
     main_keyboard,
     resolution_keyboard,
     size_keyboard,
@@ -43,7 +42,7 @@ def _welcome_text(user: UserSettings) -> str:
         "🔣 <b>Конфигурация:</b>\n"
         f"🖌 Цвет фона: <code>{user.background_color}</code>\n"
         f"↔️ Разрешение: <code>{user.width}×{user.height} · {user.fps} FPS</code>\n"
-        f"🎨 Формат: <code>{user.output_format.value}</code>\n"
+        "🎨 Формат: <code>GIF в Telegram (MP4)</code>\n"
         f"🔎 Размер эмодзи: <code>{user.emoji_size_percent}%</code>\n"
         f"🔤 Вотермарка: <code>{html.escape(user.watermark_text or 'выключена')}</code>"
     )
@@ -85,16 +84,6 @@ async def choose_resolution(callback: CallbackQuery, app_settings: Settings) -> 
         await callback.message.answer(
             "Выбери разрешение и частоту кадров:",
             reply_markup=resolution_keyboard(app_settings),
-        )
-
-
-@router.callback_query(F.data == "menu:format")
-async def choose_format(callback: CallbackQuery, app_settings: Settings) -> None:
-    await callback.answer()
-    if callback.message:
-        await callback.message.answer(
-            "Выбери способ отправки результата:",
-            reply_markup=format_keyboard(app_settings),
         )
 
 
@@ -170,17 +159,6 @@ async def set_resolution(callback: CallbackQuery, repository: SettingsRepository
         return
     await repository.update(callback.from_user.id, width=values[0], height=values[1], fps=values[2])
     await callback.answer("Разрешение сохранено.")
-
-
-@router.callback_query(F.data.startswith("set:format:"))
-async def set_format(callback: CallbackQuery, repository: SettingsRepository) -> None:
-    try:
-        output_format = OutputFormat((callback.data or "").rsplit(":", 1)[1])
-    except (ValueError, IndexError):
-        await callback.answer("Некорректный формат.", show_alert=True)
-        return
-    await repository.update(callback.from_user.id, output_format=output_format)
-    await callback.answer("Формат сохранён.")
 
 
 @router.callback_query(F.data.startswith("set:size:"))

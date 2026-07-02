@@ -35,8 +35,10 @@ def test_main_keyboard_can_enable_colored_premium_buttons() -> None:
     app_settings = Settings(enable_custom_button_emoji=True)
 
     keyboard = main_keyboard(UserSettings(user_id=1), app_settings)
-    preview = keyboard.inline_keyboard[-1][0]
+    buttons = [button for row in keyboard.inline_keyboard for button in row]
+    preview = next(button for button in buttons if button.callback_data == "menu:preview")
 
     assert preview.style == "primary"
     assert preview.icon_custom_emoji_id is not None
     assert preview.callback_data == "menu:preview"
+    assert all(button.callback_data != "menu:format" for button in buttons)

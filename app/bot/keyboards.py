@@ -3,12 +3,11 @@ from __future__ import annotations
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.config import Settings
-from app.models import OutputFormat, UserSettings
+from app.models import UserSettings
 
 _ICONS = {
     "wallet": "5769126056262898415",
     "brush": "6050679691004612757",
-    "format": "5778479949572738874",
     "media": "6035128606563241721",
     "font": "5870801517140775623",
     "eye": "6037397706505195857",
@@ -42,16 +41,21 @@ def main_keyboard(settings: UserSettings, app_settings: Settings) -> InlineKeybo
                 _button(app_settings, "Разрешение", "menu:resolution", icon="settings"),
             ],
             [
-                _button(app_settings, "Формат", "menu:format", icon="format"),
                 _button(app_settings, "Своя медиа", "menu:media", icon="media"),
-            ],
-            [
                 _button(app_settings, "Цвет эмодзи", "menu:emoji_color", icon="brush"),
-                _button(app_settings, "Вотермарка", "menu:watermark", icon="font"),
             ],
             [
-                _button(app_settings, "Предпросмотр", "menu:preview", style="primary", icon="eye"),
+                _button(app_settings, "Вотермарка", "menu:watermark", icon="font"),
                 _button(app_settings, "Размер эмодзи", "menu:size", icon="settings"),
+            ],
+            [
+                _button(
+                    app_settings,
+                    "Предпросмотр",
+                    "menu:preview",
+                    style="primary",
+                    icon="eye",
+                )
             ],
         ]
     )
@@ -70,21 +74,6 @@ def resolution_keyboard(app_settings: Settings) -> InlineKeyboardMarkup:
                 )
             ]
             for index, (width, height, fps) in enumerate(presets)
-        ]
-    )
-
-
-def format_keyboard(app_settings: Settings) -> InlineKeyboardMarkup:
-    labels = {
-        OutputFormat.ANIMATION: "GIF в Telegram (MP4)",
-        OutputFormat.VIDEO: "Видео MP4",
-        OutputFormat.FILE: "Файл MP4 · HQ",
-        OutputFormat.GIF: "Настоящий GIF",
-    }
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [_button(app_settings, label, f"set:format:{value.value}")]
-            for value, label in labels.items()
         ]
     )
 

@@ -15,7 +15,6 @@ _UPDATABLE_FIELDS = {
     "width",
     "height",
     "fps",
-    "output_format",
     "emoji_size_percent",
     "emoji_color",
     "watermark_text",
@@ -51,6 +50,9 @@ class SettingsRepository:
                     pending_action TEXT,
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
+                UPDATE user_settings
+                SET output_format = 'animation'
+                WHERE output_format <> 'animation';
                 """
             )
             await connection.commit()

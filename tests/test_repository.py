@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import aiosqlite
 import pytest
 
 from app.models import BackgroundKind, OutputFormat
@@ -18,7 +19,6 @@ async def test_settings_persist_between_repository_instances(tmp_path: Path) -> 
         42,
         background_kind=BackgroundKind.PHOTO,
         background_file_id="photo-id",
-        output_format=OutputFormat.FILE,
         emoji_size_percent=70,
     )
     await first.set_pending_action(42, "watermark")
@@ -26,7 +26,7 @@ async def test_settings_persist_between_repository_instances(tmp_path: Path) -> 
     second = SettingsRepository(database)
     loaded = await second.get(42)
     assert defaults.background_color == "#F74539"
-    assert updated.output_format is OutputFormat.FILE
+    assert updated.output_format is OutputFormat.ANIMATION
     assert loaded.background_kind is BackgroundKind.PHOTO
     assert loaded.background_file_id == "photo-id"
     assert loaded.emoji_size_percent == 70
@@ -39,3 +39,21 @@ async def test_repository_rejects_unknown_update_field(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError):
         await repository.update(1, is_admin=True)
+
+
+async def test_initialize_migrates_legacy_formats_to_telegram_animation(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "bot.sqlite3"
+    repository = SettingsRepository(database)
+    await repository.initialize()
+    await repository.get(7)
+    async with aiosqlite.connect(database) as connection:
+        await connection.execute(
+            "UPDATE user_settings SET output_format = 'file' WHERE user_id = 7"
+        )
+        await connection.commit()
+
+    await repository.initialize()
+
+    assert (await repository.get(7)).output_format is OutputFormat.ANIMATION

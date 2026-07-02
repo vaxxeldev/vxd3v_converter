@@ -40,3 +40,8 @@
 - Added a production-container integration render from a moving 60 FPS TGS fixture.
 - Verified 1920×530, H.264 High, yuv420p, 180 frames and complete BT.709 VUI metadata.
 - Verified at least 170 unique decoded frames, preventing static-frame false positives.
+
+## 2026-07-02 — Single Telegram output
+
+- Removed user-facing format selection and kept Telegram GIF as silent H.264 MP4.
+- Added startup migration from legacy video, file and true-GIF preferences.
