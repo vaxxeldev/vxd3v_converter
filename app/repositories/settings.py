@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -33,8 +34,9 @@ _UPDATABLE_FIELDS = {
 
 
 class SettingsRepository:
-    def __init__(self, database_path: Path) -> None:
+    def __init__(self, database_path: Path, new_user_bonus_kopecks: int = 0) -> None:
         self._database_path = database_path
+        self._new_user_bonus_kopecks = new_user_bonus_kopecks
 
     async def initialize(self) -> None:
         await asyncio.to_thread(self._database_path.parent.mkdir, parents=True, exist_ok=True)
@@ -58,6 +60,7 @@ class SettingsRepository:
                     watermark_text TEXT,
                     watermark_position TEXT NOT NULL DEFAULT 'bottom_right',
                     pending_action TEXT,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE TABLE IF NOT EXISTS banner_cache (
@@ -106,6 +109,17 @@ class SettingsRepository:
                 "ALTER TABLE user_settings ADD COLUMN watermark_font TEXT "
                 "NOT NULL DEFAULT 'montserrat'"
             )
+        if "created_at" not in columns:
+            await connection.execute("ALTER TABLE user_settings ADD COLUMN created_at TEXT")
+            await connection.execute(
+                "UPDATE user_settings SET created_at = COALESCE(updated_at, CURRENT_TIMESTAMP) "
+                "WHERE created_at IS NULL"
+            )
+        if "admin_credit_balance_kopecks" not in columns:
+            await connection.execute(
+                "ALTER TABLE user_settings ADD COLUMN admin_credit_balance_kopecks "
+                "INTEGER NOT NULL DEFAULT 0 CHECK(admin_credit_balance_kopecks >= 0)"
+            )
 
     async def remember_username(self, user_id: int, username: str | None) -> None:
         await self.get(user_id)
@@ -136,10 +150,24 @@ class SettingsRepository:
     async def get(self, user_id: int) -> UserSettings:
         async with aiosqlite.connect(self._database_path) as connection:
             connection.row_factory = aiosqlite.Row
-            await connection.execute(
-                "INSERT OR IGNORE INTO user_settings (user_id) VALUES (?)",
-                (user_id,),
+            await connection.execute("BEGIN IMMEDIATE")
+            insert = await connection.execute(
+                "INSERT OR IGNORE INTO user_settings "
+                "(user_id, balance_kopecks, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+                (user_id, self._new_user_bonus_kopecks),
             )
+            if insert.rowcount == 1 and self._new_user_bonus_kopecks > 0:
+                await connection.execute(
+                    "INSERT INTO balance_transactions "
+                    "(id, user_id, amount_kopecks, kind, reference_id) "
+                    "VALUES (?, ?, ?, 'welcome_bonus', ?)",
+                    (
+                        uuid.uuid4().hex,
+                        user_id,
+                        self._new_user_bonus_kopecks,
+                        str(user_id),
+                    ),
+                )
             cursor = await connection.execute(
                 "SELECT * FROM user_settings WHERE user_id = ?",
                 (user_id,),

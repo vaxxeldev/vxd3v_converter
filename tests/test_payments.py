@@ -23,6 +23,18 @@ async def _repositories(tmp_path: Path) -> tuple[SettingsRepository, PaymentRepo
     return settings, payments
 
 
+async def _balance_parts(database: Path, user_id: int) -> tuple[int, int]:
+    async with aiosqlite.connect(database) as connection:
+        cursor = await connection.execute(
+            "SELECT balance_kopecks, admin_credit_balance_kopecks "
+            "FROM user_settings WHERE user_id = ?",
+            (user_id,),
+        )
+        row = await cursor.fetchone()
+    assert row is not None
+    return int(row[0]), int(row[1])
+
+
 @pytest.mark.parametrize(
     ("value", "expected"),
     [("10", 1000), ("100.50", 10050), ("25,5", 2550)],
@@ -181,3 +193,101 @@ async def test_expired_crypto_invoice_does_not_credit_balance(tmp_path: Path) ->
     result = await payments.settle_crypto_invoice(778, "expired")
 
     assert result == (True, 71, 0)
+
+
+async def test_welcome_bonus_is_granted_once_only_to_new_users(tmp_path: Path) -> None:
+    database = tmp_path / "bot.sqlite3"
+    settings = SettingsRepository(database, new_user_bonus_kopecks=1000)
+    await settings.initialize()
+    payments = PaymentRepository(database)
+    await payments.initialize()
+
+    first = await settings.get(80)
+    second = await settings.get(80)
+
+    assert first.balance_kopecks == 1000
+    assert second.balance_kopecks == 1000
+    async with aiosqlite.connect(database) as connection:
+        cursor = await connection.execute(
+            "SELECT COUNT(*) FROM balance_transactions "
+            "WHERE user_id = 80 AND kind = 'welcome_bonus'"
+        )
+        assert await cursor.fetchone() == (1,)
+
+
+async def test_existing_user_does_not_receive_welcome_bonus_after_update(tmp_path: Path) -> None:
+    database = tmp_path / "bot.sqlite3"
+    old_repository = SettingsRepository(database)
+    await old_repository.initialize()
+    await old_repository.get(81)
+    payments = PaymentRepository(database)
+    await payments.initialize()
+
+    updated_repository = SettingsRepository(database, new_user_bonus_kopecks=1000)
+    await updated_repository.initialize()
+
+    assert (await updated_repository.get(81)).balance_kopecks == 0
+
+
+async def test_admin_credit_is_spent_first_and_refunded_to_same_bucket(tmp_path: Path) -> None:
+    settings, payments = await _repositories(tmp_path)
+    await settings.get(90)
+    await payments.admin_credit(90, 1500)
+    request = await payments.create_direct(90, 1000)
+    await payments.attach_receipt(request.id, 90, "receipt", "photo")
+    await payments.approve(request.id)
+
+    first = await payments.charge_render(90, 1000)
+    second = await payments.charge_render(90, 1000)
+
+    assert first.admin_credit_kopecks == 1000
+    assert first.regular_kopecks == 0
+    assert second.admin_credit_kopecks == 500
+    assert second.regular_kopecks == 500
+    assert await _balance_parts(tmp_path / "bot.sqlite3", 90) == (500, 0)
+
+    assert await payments.refund_render(second.id) is True
+    assert await _balance_parts(tmp_path / "bot.sqlite3", 90) == (1500, 500)
+
+
+async def test_statistics_exclude_admin_and_manual_credit_balance(tmp_path: Path) -> None:
+    database = tmp_path / "bot.sqlite3"
+    settings = SettingsRepository(database, new_user_bonus_kopecks=1000)
+    await settings.initialize()
+    payments = PaymentRepository(database)
+    await payments.initialize()
+    admin_id = 2009632768
+    await settings.get(admin_id)
+    await settings.get(101)
+    await settings.get(102)
+
+    await payments.admin_credit(101, 5000)
+    direct = await payments.create_direct(101, 2000)
+    await payments.attach_receipt(direct.id, 101, "receipt", "photo")
+    await payments.approve(direct.id)
+    await payments.create_crypto_invoice(7001, 102, 3000, "https://t.me/CryptoBot?a=1")
+    await payments.settle_crypto_invoice(7001, "paid")
+
+    completed = await payments.charge_render(101, 1000)
+    await payments.complete_render(completed.id)
+    refunded = await payments.charge_render(102, 1000)
+    await payments.refund_render(refunded.id)
+
+    pending = await payments.create_direct(102, 1000)
+    await payments.attach_receipt(pending.id, 102, "pending", "photo")
+    await payments.create_crypto_invoice(7002, 102, 1000, "https://t.me/CryptoBot?a=2")
+
+    stats = await payments.statistics(admin_id)
+
+    assert stats.users_total == 2
+    assert stats.users_today == 2
+    assert stats.users_seven_days == 2
+    assert stats.renders_completed == 1
+    assert stats.renders_refunded == 1
+    assert stats.successful_render_percent == 50.0
+    assert stats.renders_per_user == 0.5
+    assert stats.countable_balance_kopecks == 7000
+    assert stats.direct_topups_kopecks == 2000
+    assert stats.crypto_topups_kopecks == 3000
+    assert stats.payments_awaiting_review == 1
+    assert stats.crypto_invoices_active == 1

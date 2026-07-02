@@ -22,6 +22,7 @@ Telegram-бот для создания плавных MP4-анимаций из
 | `DIRECT_PAYMENT_REQUISITES` | обязательно | реквизиты получателя |
 | `DIRECT_PAYMENT_RECIPIENT` | обязательно | имя получателя |
 | `CRYPTO_PAY_TOKEN` | обязательно для Crypto Bot | API-токен приложения Crypto Pay |
+| `NEW_USER_BONUS_KOPECKS` | рекомендуется | стартовый баланс нового пользователя, по умолчанию `1000` |
 | `DATABASE_PATH` | рекомендуется | `/app/data/bot.sqlite3` |
 | `CACHE_ROOT` | рекомендуется | `/app/data/cache` |
 

@@ -41,7 +41,7 @@ async def main() -> None:
         token=settings.bot_token.get_secret_value(),
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
-    repository = SettingsRepository(settings.database_path)
+    repository = SettingsRepository(settings.database_path, settings.new_user_bonus_kopecks)
     await repository.initialize()
     payment_repository = PaymentRepository(settings.database_path)
     await payment_repository.initialize()

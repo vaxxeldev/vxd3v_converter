@@ -99,3 +99,10 @@
 - Added a ready-made 1920×530, 60 FPS preview animation with a centered `предпросмотр` label.
 - Made the Preview button send this cached asset instantly instead of rendering user content.
 - Kept user media and paid render watermarks completely separate from the demo preview.
+
+## 2026-07-03 — Welcome balance and owner statistics
+
+- Added an atomic 10 RUB welcome balance for newly created users without notifications.
+- Separated manual admin-credit funds so owner statistics exclude their remaining balance.
+- Preserved fund sources through render charges, failures, refunds and legacy-data migration.
+- Added owner-only `.стата` reporting for users, renders, balances, revenue and pending payments.

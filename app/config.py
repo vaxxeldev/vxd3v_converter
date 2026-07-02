@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     admin_id: int | None = None
     render_price_kopecks: int = Field(default=1000, ge=100)
     min_topup_kopecks: int = Field(default=1000, ge=100)
+    new_user_bonus_kopecks: int = Field(default=1000, ge=0, le=100_000)
     direct_payment_bank: str = "ВТБ"
     direct_payment_requisites: SecretStr | None = None
     direct_payment_recipient: str | None = None

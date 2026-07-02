@@ -514,7 +514,11 @@ async def process_message(
         return
     user_id = message.from_user.id
     await repository.remember_username(user_id, message.from_user.username)
-    if (message.text or "").casefold().startswith(".пополнить"):
+    command_text = (message.text or "").strip().casefold()
+    if command_text.startswith(".стата"):
+        await _process_admin_statistics(message, payment_repository, app_settings)
+        return
+    if command_text.startswith(".пополнить"):
         await _process_admin_credit(
             message,
             bot,
@@ -588,6 +592,43 @@ async def process_message(
         raise
     await payment_repository.complete_render(order.id)
     await _show_main(user_id, user_id, repository, panel)
+
+
+async def _process_admin_statistics(
+    message: Message,
+    payment_repository: PaymentRepository,
+    app_settings: Settings,
+) -> None:
+    if not message.from_user or message.from_user.id != app_settings.admin_id:
+        await message.answer("Команда недоступна.")
+        return
+    if (message.text or "").strip().casefold() != ".стата":
+        await message.answer("Формат: <code>.стата</code>")
+        return
+    stats = await payment_repository.statistics(message.from_user.id)
+    real_topups = stats.direct_topups_kopecks + stats.crypto_topups_kopecks
+    await message.answer(
+        "<b>СТАТИСТИКА VXD3V</b>\n\n"
+        "<b>Аудитория</b>\n"
+        f"Пользователей: <code>{stats.users_total}</code>\n"
+        f"Новых сегодня: <code>{stats.users_today}</code>\n"
+        f"Новых за 7 дней: <code>{stats.users_seven_days}</code>\n\n"
+        "<b>Рендеры</b>\n"
+        f"Успешных всего: <code>{stats.renders_completed}</code>\n"
+        f"Сегодня: <code>{stats.renders_today}</code>\n"
+        f"За 7 дней: <code>{stats.renders_seven_days}</code>\n"
+        f"С возвратом: <code>{stats.renders_refunded}</code>\n"
+        f"Успешность: <code>{stats.successful_render_percent:.1f}%</code>\n"
+        f"На пользователя: <code>{stats.renders_per_user:.2f}</code>\n\n"
+        "<b>Финансы</b>\n"
+        f"Баланс пользователей: <code>{format_rubles(stats.countable_balance_kopecks)}</code>\n"
+        f"Реальные пополнения: <code>{format_rubles(real_topups)}</code>\n"
+        f"Прямые переводы: <code>{format_rubles(stats.direct_topups_kopecks)}</code>\n"
+        f"Crypto Bot: <code>{format_rubles(stats.crypto_topups_kopecks)}</code>\n\n"
+        "<b>Ожидают обработки</b>\n"
+        f"Чеков: <code>{stats.payments_awaiting_review}</code>\n"
+        f"Crypto-счетов: <code>{stats.crypto_invoices_active}</code>"
+    )
 
 
 async def _process_admin_credit(
