@@ -17,6 +17,7 @@ _BANNER_FILES = {
     "topup": "начисление баланса.mp4",
     "size": "размеры.mp4",
     "resolution": "смена разрешения.mp4",
+    "preview": "предпросмотр.mp4",
 }
 _MAX_BANNER_BYTES = 10 * 1024 * 1024
 

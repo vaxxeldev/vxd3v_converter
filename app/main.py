@@ -78,6 +78,7 @@ async def main() -> None:
             payment_repository=payment_repository,
             conversion=conversion,
             panel=panel,
+            banner_service=banner_service,
             app_settings=settings,
             crypto_payments=crypto_payments,
             allowed_updates=dispatcher.resolve_used_update_types(),

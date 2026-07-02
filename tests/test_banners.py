@@ -46,3 +46,20 @@ async def test_changed_banner_invalidates_cached_file_id(tmp_path: Path) -> None
     assert updated.cached is False
     assert updated.sha256 != first.sha256
     assert await repository.get_banner_cache("start") is None
+
+
+async def test_fixed_preview_uses_persistent_banner_cache(tmp_path: Path) -> None:
+    root = tmp_path / "banners"
+    root.mkdir()
+    (root / "предпросмотр.mp4").write_bytes(b"ready-preview")
+    repository = SettingsRepository(tmp_path / "bot.sqlite3")
+    await repository.initialize()
+    service = BannerService(Settings(banner_root=root), repository)
+
+    first = await service.resolve("preview")
+    await service.remember(first, "preview-file-id")
+    cached = await BannerService(Settings(banner_root=root), repository).resolve("preview")
+
+    assert isinstance(first.media, FSInputFile)
+    assert cached.media == "preview-file-id"
+    assert cached.cached is True

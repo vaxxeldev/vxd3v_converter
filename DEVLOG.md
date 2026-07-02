@@ -96,5 +96,6 @@
 
 ## 2026-07-02 — Larger preview label
 
-- Replaced the free preview watermark with a centered `предпросмотр` label.
-- Increased its font size to 20% of canvas height without changing paid render watermarks.
+- Added a ready-made 1920×530, 60 FPS preview animation with a centered `предпросмотр` label.
+- Made the Preview button send this cached asset instantly instead of rendering user content.
+- Kept user media and paid render watermarks completely separate from the demo preview.

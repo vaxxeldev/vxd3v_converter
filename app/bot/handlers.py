@@ -10,6 +10,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, ErrorEvent, FSInputFile, Message
 
+from app.bot.banners import BannerService
 from app.bot.keyboards import (
     back_keyboard,
     background_keyboard,
@@ -32,7 +33,6 @@ from app.services.conversion import ConversionService, RenderedMedia
 from app.services.crypto_pay import CryptoPaymentService
 from app.services.errors import ConversionError, InsufficientBalanceError, PaymentStateError
 from app.services.payments import format_rubles, parse_rubles
-from app.services.preview import preview_settings
 
 logger = logging.getLogger(__name__)
 router = Router(name="converter")
@@ -175,7 +175,7 @@ async def _show_resolution(
     repository: SettingsRepository,
     panel: PanelService,
 ) -> None:
-    settings = preview_settings(await repository.get(user_id))
+    settings = await repository.get(user_id)
     await panel.show(
         user_id,
         user_id,
@@ -475,43 +475,28 @@ async def preview(
     callback: CallbackQuery,
     bot: Bot,
     repository: SettingsRepository,
-    panel: PanelService,
-    conversion: ConversionService,
+    banner_service: BannerService,
 ) -> None:
     await callback.answer()
     user_id = callback.from_user.id
-    sources = await repository.get_sources(user_id)
-    if not sources:
-        await panel.show(
-            user_id,
-            user_id,
-            _screen_factory(
-                "ПРЕДПРОСМОТР",
-                "Сначала отправь премиум-эмодзи или стикер.\n"
-                "После этого материал сохранится для предпросмотра.",
-                lambda premium: back_keyboard(premium=premium),
-                icon_name="eye",
-            ),
-            banner=None,
-        )
-        return
-    settings = await repository.get(user_id)
-    await _show_rendering(user_id, panel, "Собираю предпросмотр…")
-    await bot.send_chat_action(user_id, ChatAction.UPLOAD_VIDEO)
+    old_preview = await repository.get_preview_message(user_id)
+    if old_preview:
+        try:
+            await bot.delete_message(user_id, old_preview)
+        except TelegramBadRequest:
+            pass
+    media = await banner_service.resolve("preview")
     try:
-        async with conversion.convert(settings, sources) as result:
-            old_preview = await repository.get_preview_message(user_id)
-            if old_preview:
-                try:
-                    await bot.delete_message(user_id, old_preview)
-                except TelegramBadRequest:
-                    pass
-            sent = await _send_result(bot, user_id, result, preview=True)
-            await repository.set_preview_message(user_id, sent.message_id)
-    except ConversionError as error:
-        await _show_render_error(user_id, panel, str(error))
-        return
-    await _show_main(user_id, user_id, repository, panel)
+        sent = await bot.send_animation(user_id, media.media)
+    except TelegramBadRequest:
+        if not media.cached:
+            raise
+        await banner_service.invalidate("preview")
+        media = await banner_service.resolve("preview")
+        sent = await bot.send_animation(user_id, media.media)
+    if not media.cached and sent.animation:
+        await banner_service.remember(media, sent.animation.file_id)
+    await repository.set_preview_message(user_id, sent.message_id)
 
 
 @router.message()

@@ -7,13 +7,11 @@ import pytest
 
 from app.bot.payment_handlers import is_admin
 from app.config import Settings
-from app.models import UserSettings, WatermarkFont, WatermarkPosition
 from app.repositories import PaymentRepository, SettingsRepository
 from app.repositories.payments import PaymentStatus
 from app.services.crypto_pay import CryptoPayClient
 from app.services.errors import InsufficientBalanceError, PaymentStateError
 from app.services.payments import format_rubles, parse_rubles
-from app.services.preview import preview_settings
 
 
 async def _repositories(tmp_path: Path) -> tuple[SettingsRepository, PaymentRepository]:
@@ -134,22 +132,6 @@ def test_only_configured_admin_is_authorized() -> None:
 
     assert is_admin(2009632768, settings) is True
     assert is_admin(123, settings) is False
-
-
-def test_preview_forces_large_centered_preview_watermark() -> None:
-    source = UserSettings(
-        user_id=1,
-        watermark_text="custom",
-        watermark_position=WatermarkPosition.TOP_LEFT,
-    )
-
-    preview = preview_settings(source)
-
-    assert preview.watermark_text == "предпросмотр"
-    assert preview.watermark_position is WatermarkPosition.CENTER
-    assert preview.watermark_font_scale == 0.20
-    assert preview.watermark_font is WatermarkFont.MONTSERRAT
-    assert source.watermark_text == "custom"
 
 
 async def test_admin_credit_updates_balance_and_ledger(tmp_path: Path) -> None:
