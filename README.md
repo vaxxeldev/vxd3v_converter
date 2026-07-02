@@ -1,24 +1,45 @@
-# vxd3v converter
+# VXD3V Converter
 
-Quality-first Telegram converter for premium emoji and stickers.
+Telegram-бот для создания плавных MP4-анимаций из премиум-эмодзи и стикеров.
+Рендер выполняется в 60 FPS через нативный rlottie и FFmpeg.
 
-The renderer targets the supplied reference contract: 1920×530, 60 FPS, 180 frames,
-three seconds, H.264 High, yuv420p and BT.709 limited range.
+## Развёртывание на Bothost PRO
 
-Implementation and deployment details are added incrementally and recorded in
-`DEVLOG.md`.
+Проект использует собственный многоэтапный `Dockerfile`. В панели Bothost укажите:
 
-## Bothost PRO
+- Git URL: `https://github.com/vaxxeldev/vxd3v_converter.git`;
+- ветка: `main`;
+- сборка: кастомный Dockerfile из корня репозитория;
+- публичный порт и домен не нужны — бот работает через long polling.
 
-The project uses a custom multi-stage `Dockerfile`. Add `BOT_TOKEN` in the
-Bothost environment and deploy the `main` branch. Runtime sources are installed
-under `/usr/local`, while persistent SQLite data and render cache live in
-`/app/data` as required by Bothost volumes.
+Добавьте в разделе «Переменные окружения»:
 
-The default process uses long polling and does not require a public port.
+| Переменная | Обязательность | Назначение |
+|---|---:|---|
+| `BOT_TOKEN` | обязательно | токен Telegram-бота |
+| `ADMIN_ID` | обязательно | Telegram ID администратора платежей |
+| `DIRECT_PAYMENT_BANK` | обязательно | банк для прямого перевода |
+| `DIRECT_PAYMENT_REQUISITES` | обязательно | реквизиты получателя |
+| `DIRECT_PAYMENT_RECIPIENT` | обязательно | имя получателя |
+| `CRYPTO_PAY_TOKEN` | обязательно для Crypto Bot | API-токен приложения Crypto Pay |
+| `DATABASE_PATH` | рекомендуется | `/app/data/bot.sqlite3` |
+| `CACHE_ROOT` | рекомендуется | `/app/data/cache` |
 
-Required Bothost environment variable: `BOT_TOKEN`. Optional tuning variables
-are documented in `.env.example`; persistent state requires no external database.
+Остальные настройки и безопасные значения по умолчанию перечислены в
+`.env.example`. Секреты нельзя добавлять в Git.
+
+SQLite, кэш рендера и Telegram `file_id` сохраняются в `/app/data`. Bothost
+монтирует эту папку как постоянное хранилище, поэтому баланс и настройки не
+пропадают после обновления контейнера.
+
+После первого деплоя проверьте в логах строки `Start polling` и
+`Run polling for bot`. Если изменились переменные окружения, выполните повторный
+деплой контейнера.
+
+## Формат результата
+
+Основной результат: MP4/H.264 High, yuv420p, 60 FPS и BT.709. Пользователю файл
+отправляется как Telegram GIF-анимация.
 
 ## Local renderer
 
