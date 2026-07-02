@@ -26,9 +26,10 @@ from app.bot.payment_handlers import process_payment_input, show_wallet_panel
 from app.bot.sources import extract_sources
 from app.bot.texts import icon, main_text, screen_text
 from app.config import Settings
-from app.models import BackgroundKind, UserSettings, WatermarkPosition
+from app.models import BackgroundKind, UserSettings, WatermarkFont, WatermarkPosition
 from app.repositories import PaymentRepository, SettingsRepository
 from app.services.conversion import ConversionService, RenderedMedia
+from app.services.crypto_pay import CryptoPaymentService
 from app.services.errors import ConversionError, InsufficientBalanceError, PaymentStateError
 from app.services.payments import format_rubles, parse_rubles
 from app.services.preview import preview_settings
@@ -41,6 +42,7 @@ _ADMIN_CREDIT = re.compile(
     re.IGNORECASE,
 )
 _POSITIONS = {item.value: item for item in WatermarkPosition}
+_WATERMARK_FONTS = {item.value: item for item in WatermarkFont}
 _POSITION_LABELS = {
     WatermarkPosition.TOP_LEFT: "сверху слева",
     WatermarkPosition.TOP_RIGHT: "сверху справа",
@@ -147,6 +149,7 @@ async def show_wallet(
     repository: SettingsRepository,
     panel: PanelService,
     app_settings: Settings,
+    crypto_payments: CryptoPaymentService,
 ) -> None:
     await callback.answer()
     await show_wallet_panel(
@@ -297,12 +300,15 @@ async def _show_watermark(
     settings = await repository.get(user_id)
     text = html.escape(settings.watermark_text or "выключена")
     position = _POSITION_LABELS[settings.watermark_position]
+    font = "Montserrat" if settings.watermark_font is WatermarkFont.MONTSERRAT else "Space Mono"
     await panel.show(
         user_id,
         user_id,
         _screen_factory(
             "ВОТЕРМАРКА",
-            f"Текст: <code>{text}</code>\nПоложение: <code>{position}</code>",
+            f"Текст: <code>{text}</code>\n"
+            f"Шрифт: <code>{font}</code>\n"
+            f"Положение: <code>{position}</code>",
             lambda premium: watermark_keyboard(settings, premium=premium),
             icon_name="font",
         ),
@@ -449,6 +455,21 @@ async def set_watermark_position(
     await _show_watermark(callback.from_user.id, repository, panel)
 
 
+@router.callback_query(F.data.startswith("set:watermark_font:"))
+async def set_watermark_font(
+    callback: CallbackQuery,
+    repository: SettingsRepository,
+    panel: PanelService,
+) -> None:
+    font = _WATERMARK_FONTS.get((callback.data or "").rsplit(":", 1)[-1])
+    if font is None:
+        await callback.answer("Неизвестный шрифт", show_alert=True)
+        return
+    await repository.update(callback.from_user.id, watermark_font=font)
+    await callback.answer("Шрифт сохранён")
+    await _show_watermark(callback.from_user.id, repository, panel)
+
+
 @router.callback_query(F.data == "menu:preview")
 async def preview(
     callback: CallbackQuery,
@@ -502,6 +523,7 @@ async def process_message(
     conversion: ConversionService,
     panel: PanelService,
     app_settings: Settings,
+    crypto_payments: CryptoPaymentService,
 ) -> None:
     if not message.from_user:
         return
@@ -526,6 +548,7 @@ async def process_message(
             repository,
             panel,
             app_settings,
+            crypto_payments,
         ):
             return
         await _process_pending(message, repository, panel, pending)

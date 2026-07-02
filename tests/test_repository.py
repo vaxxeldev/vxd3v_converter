@@ -5,7 +5,7 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from app.models import BackgroundKind, OutputFormat, SourceAsset, StickerKind
+from app.models import BackgroundKind, OutputFormat, SourceAsset, StickerKind, WatermarkFont
 from app.repositories import SettingsRepository
 
 
@@ -31,6 +31,9 @@ async def test_settings_persist_between_repository_instances(tmp_path: Path) -> 
     assert loaded.background_file_id == "photo-id"
     assert loaded.emoji_size_percent == 70
     assert await second.get_pending_action(42) == "watermark"
+
+    await second.update(42, watermark_font=WatermarkFont.SPACE_MONO)
+    assert (await second.get(42)).watermark_font is WatermarkFont.SPACE_MONO
 
 
 async def test_repository_rejects_unknown_update_field(tmp_path: Path) -> None:

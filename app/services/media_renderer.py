@@ -12,6 +12,7 @@ from app.models import (
     OutputFormat,
     RenderRequest,
     StickerKind,
+    WatermarkFont,
 )
 from app.services.errors import MediaValidationError
 from app.services.media_probe import MediaProbe, VideoMetadata
@@ -207,8 +208,12 @@ class MediaRenderer:
             text_path.write_text(settings.watermark_text, encoding="utf-8")
             x, y = self._watermark_coordinates(settings.watermark_position.value)
             font_size = max(12, int(height * settings.watermark_font_scale))
+            font_file = {
+                WatermarkFont.MONTSERRAT: self._settings.montserrat_font_file,
+                WatermarkFont.SPACE_MONO: self._settings.space_mono_font_file,
+            }[settings.watermark_font]
             filters.append(
-                f"[{current}]drawtext=fontfile='{self._escape_path(self._settings.font_file)}':"
+                f"[{current}]drawtext=fontfile='{self._escape_path(font_file)}':"
                 f"textfile='{self._escape_path(text_path)}':fontcolor=white@0.78:"
                 f"fontsize={font_size}:borderw=1:bordercolor=black@0.45:"
                 f"x={x}:y={y}[watermarked]"

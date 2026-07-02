@@ -24,6 +24,12 @@ class RenderStatus(StrEnum):
     REFUNDED = "refunded"
 
 
+class CryptoInvoiceStatus(StrEnum):
+    ACTIVE = "active"
+    PAID = "paid"
+    EXPIRED = "expired"
+
+
 @dataclass(slots=True, frozen=True)
 class PaymentRequest:
     id: str
@@ -46,6 +52,15 @@ class RenderOrder:
     id: str
     user_id: int
     amount_kopecks: int
+
+
+@dataclass(slots=True, frozen=True)
+class CryptoInvoiceRecord:
+    invoice_id: int
+    user_id: int
+    amount_kopecks: int
+    status: CryptoInvoiceStatus
+    pay_url: str
 
 
 class PaymentRepository:
@@ -89,6 +104,17 @@ class PaymentRepository:
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
+                CREATE TABLE IF NOT EXISTS crypto_invoices (
+                    invoice_id INTEGER PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES user_settings(user_id),
+                    amount_kopecks INTEGER NOT NULL CHECK(amount_kopecks >= 1000),
+                    status TEXT NOT NULL,
+                    pay_url TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS crypto_invoices_status
+                ON crypto_invoices(status);
                 """
             )
             await connection.commit()
@@ -267,6 +293,85 @@ class PaymentRepository:
             await connection.commit()
         return int(balance[0])
 
+    async def create_crypto_invoice(
+        self,
+        invoice_id: int,
+        user_id: int,
+        amount_kopecks: int,
+        pay_url: str,
+    ) -> CryptoInvoiceRecord:
+        async with aiosqlite.connect(self._database_path) as connection:
+            await connection.execute(
+                "INSERT INTO crypto_invoices "
+                "(invoice_id, user_id, amount_kopecks, status, pay_url) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (invoice_id, user_id, amount_kopecks, CryptoInvoiceStatus.ACTIVE, pay_url),
+            )
+            await connection.commit()
+        return CryptoInvoiceRecord(
+            invoice_id,
+            user_id,
+            amount_kopecks,
+            CryptoInvoiceStatus.ACTIVE,
+            pay_url,
+        )
+
+    async def active_crypto_invoices(self) -> list[CryptoInvoiceRecord]:
+        async with aiosqlite.connect(self._database_path) as connection:
+            connection.row_factory = aiosqlite.Row
+            cursor = await connection.execute(
+                "SELECT * FROM crypto_invoices WHERE status = ? ORDER BY invoice_id",
+                (CryptoInvoiceStatus.ACTIVE,),
+            )
+            rows = await cursor.fetchall()
+        return [self._crypto_invoice(row) for row in rows]
+
+    async def settle_crypto_invoice(self, invoice_id: int, status: str) -> tuple[bool, int, int]:
+        if status not in {CryptoInvoiceStatus.PAID, CryptoInvoiceStatus.EXPIRED}:
+            raise PaymentStateError("Некорректный статус Crypto Bot.")
+        async with aiosqlite.connect(self._database_path) as connection:
+            connection.row_factory = aiosqlite.Row
+            await connection.execute("BEGIN IMMEDIATE")
+            cursor = await connection.execute(
+                "SELECT * FROM crypto_invoices WHERE invoice_id = ?",
+                (invoice_id,),
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                await connection.rollback()
+                raise PaymentStateError("Счёт Crypto Bot не найден.")
+            applied = row["status"] == CryptoInvoiceStatus.ACTIVE
+            if applied:
+                await connection.execute(
+                    "UPDATE crypto_invoices SET status = ?, updated_at = CURRENT_TIMESTAMP "
+                    "WHERE invoice_id = ? AND status = ?",
+                    (status, invoice_id, CryptoInvoiceStatus.ACTIVE),
+                )
+                if status == CryptoInvoiceStatus.PAID:
+                    await connection.execute(
+                        "UPDATE user_settings SET balance_kopecks = balance_kopecks + ? "
+                        "WHERE user_id = ?",
+                        (row["amount_kopecks"], row["user_id"]),
+                    )
+                    await connection.execute(
+                        "INSERT INTO balance_transactions "
+                        "(id, user_id, amount_kopecks, kind, reference_id) "
+                        "VALUES (?, ?, ?, 'crypto_topup', ?)",
+                        (
+                            uuid.uuid4().hex,
+                            row["user_id"],
+                            row["amount_kopecks"],
+                            str(invoice_id),
+                        ),
+                    )
+            balance_cursor = await connection.execute(
+                "SELECT balance_kopecks FROM user_settings WHERE user_id = ?",
+                (row["user_id"],),
+            )
+            balance = await balance_cursor.fetchone()
+            await connection.commit()
+        return applied, int(row["user_id"]), int(balance[0])
+
     async def complete_render(self, order_id: str) -> None:
         async with aiosqlite.connect(self._database_path) as connection:
             await connection.execute(
@@ -328,4 +433,14 @@ class PaymentRepository:
             status=PaymentStatus(row["status"]),
             receipt_file_id=row["receipt_file_id"],
             receipt_kind=row["receipt_kind"],
+        )
+
+    @staticmethod
+    def _crypto_invoice(row: aiosqlite.Row) -> CryptoInvoiceRecord:
+        return CryptoInvoiceRecord(
+            invoice_id=int(row["invoice_id"]),
+            user_id=int(row["user_id"]),
+            amount_kopecks=int(row["amount_kopecks"]),
+            status=CryptoInvoiceStatus(row["status"]),
+            pay_url=str(row["pay_url"]),
         )

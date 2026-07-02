@@ -85,3 +85,11 @@
 - Added admin-only `.пополнить @username сумма` balance credits with an auditable ledger entry.
 - Added normalized username tracking for users who interact with the bot.
 - Increased the free preview's centered `vxd3v` watermark from 4% to 10% of canvas height.
+
+## 2026-07-02 — Watermark fonts and Crypto Bot
+
+- Added per-user Montserrat and Space Mono watermark selection with bundled OFL fonts.
+- Increased regular watermark size to 8% and preview watermark size to 13% of canvas height.
+- Replaced the YooKassa placeholder with RUB-denominated Crypto Bot invoices.
+- Added persistent invoice polling, automatic one-time balance credits and payment notifications.
+- Added strict API URL, response and payment-link validation while keeping the API token in env only.

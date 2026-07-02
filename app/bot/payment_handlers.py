@@ -11,6 +11,7 @@ from app.bot.keyboards import (
     admin_confirm_keyboard,
     back_keyboard,
     cancel_keyboard,
+    crypto_invoice_keyboard,
     payment_cancel_keyboard,
     payment_methods_keyboard,
     wallet_keyboard,
@@ -20,6 +21,7 @@ from app.bot.texts import icon, screen_text
 from app.config import Settings
 from app.repositories import PaymentRepository, SettingsRepository
 from app.repositories.payments import PaymentRequest
+from app.services.crypto_pay import CryptoPaymentService
 from app.services.errors import PaymentStateError
 from app.services.payments import format_rubles, parse_rubles
 
@@ -87,7 +89,7 @@ async def direct_payment_amount(
     app_settings: Settings,
 ) -> None:
     await callback.answer()
-    await settings_repository.set_pending_action(callback.from_user.id, "topup_amount")
+    await settings_repository.set_pending_action(callback.from_user.id, "topup_amount:direct")
     minimum = format_rubles(app_settings.min_topup_kopecks)
     await panel.show(
         callback.from_user.id,
@@ -101,16 +103,27 @@ async def direct_payment_amount(
     )
 
 
-@router.callback_query(F.data == "payment:yookassa")
-async def yookassa_placeholder(callback: CallbackQuery, panel: PanelService) -> None:
+@router.callback_query(F.data == "payment:crypto")
+async def crypto_payment_amount(
+    callback: CallbackQuery,
+    settings_repository: SettingsRepository,
+    panel: PanelService,
+    app_settings: Settings,
+    crypto_payments: CryptoPaymentService,
+) -> None:
+    if not crypto_payments.available:
+        await callback.answer("Crypto Bot временно недоступен", show_alert=True)
+        return
     await callback.answer()
+    await settings_repository.set_pending_action(callback.from_user.id, "topup_amount:crypto")
+    minimum = format_rubles(app_settings.min_topup_kopecks)
     await panel.show(
         callback.from_user.id,
         callback.from_user.id,
         _screen_factory(
-            "ЮКАССА",
-            "Этот способ оплаты появится позже.",
-            lambda premium: back_keyboard(premium=premium),
+            "CRYPTO BOT",
+            f"Напишите сумму пополнения в рублях.\nМинимальная сумма: <code>{minimum}</code>",
+            lambda premium: cancel_keyboard(premium=premium),
         ),
         banner="topup",
     )
@@ -142,14 +155,17 @@ async def process_payment_input(
     settings_repository: SettingsRepository,
     panel: PanelService,
     app_settings: Settings,
+    crypto_payments: CryptoPaymentService,
 ) -> bool:
-    if pending == "topup_amount":
+    if pending in {"topup_amount", "topup_amount:direct", "topup_amount:crypto"}:
         await _process_amount(
             message,
             payment_repository,
             settings_repository,
             panel,
             app_settings,
+            crypto_payments,
+            "crypto" if pending.endswith(":crypto") else "direct",
         )
         return True
     if pending.startswith("payment_receipt:"):
@@ -172,6 +188,8 @@ async def _process_amount(
     settings_repository: SettingsRepository,
     panel: PanelService,
     app_settings: Settings,
+    crypto_payments: CryptoPaymentService,
+    method: str,
 ) -> None:
     if not message.from_user:
         return
@@ -183,10 +201,41 @@ async def _process_amount(
             message.from_user.id,
             message.chat.id,
             _screen_factory(
-                "ПРЯМОЙ ПЕРЕВОД",
+                "CRYPTO BOT" if method == "crypto" else "ПРЯМОЙ ПЕРЕВОД",
                 "Напишите сумму пополнения одним сообщением.",
                 lambda premium: cancel_keyboard(premium=premium),
                 error=str(error),
+            ),
+            banner="topup",
+        )
+        return
+    if method == "crypto":
+        try:
+            invoice = await crypto_payments.create_invoice(message.from_user.id, amount)
+        except PaymentStateError as error:
+            await panel.delete_user_message(message)
+            await panel.show(
+                message.from_user.id,
+                message.chat.id,
+                _screen_factory(
+                    "CRYPTO BOT",
+                    "Не удалось создать счёт. Попробуйте ещё раз.",
+                    lambda premium: cancel_keyboard(premium=premium),
+                    error=str(error),
+                ),
+                banner="topup",
+            )
+            return
+        await settings_repository.set_pending_action(message.from_user.id, None)
+        await panel.delete_user_message(message)
+        await panel.show(
+            message.from_user.id,
+            message.chat.id,
+            _screen_factory(
+                "СЧЁТ CRYPTO BOT",
+                f"Сумма: <code>{format_rubles(amount)}</code>\n\n"
+                "После оплаты баланс пополнится автоматически.",
+                lambda premium: crypto_invoice_keyboard(invoice.pay_url, premium=premium),
             ),
             banner="topup",
         )

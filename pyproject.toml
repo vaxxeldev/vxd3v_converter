@@ -9,6 +9,7 @@ description = "Quality-first Telegram premium emoji and sticker converter"
 requires-python = ">=3.12,<3.14"
 dependencies = [
   "aiogram==3.29.0",
+  "aiohttp==3.14.1",
   "aiosqlite==0.22.1",
   "pydantic-settings==2.14.2",
 ]

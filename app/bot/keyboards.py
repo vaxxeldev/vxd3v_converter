@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from app.models import BackgroundKind, UserSettings, WatermarkPosition
+from app.models import BackgroundKind, UserSettings, WatermarkFont, WatermarkPosition
 
 ICONS = {
     "settings": "5870982283724328568",
@@ -104,7 +104,7 @@ def payment_methods_keyboard(*, premium: bool = True) -> InlineKeyboardMarkup:
                     premium=premium,
                 )
             ],
-            [button("ЮКасса", "payment:yookassa", icon="money", premium=premium)],
+            [button("Crypto Bot", "payment:crypto", icon="money", premium=premium)],
             [button("Назад", "menu:wallet", icon="home", premium=premium)],
         ]
     )
@@ -122,6 +122,15 @@ def payment_cancel_keyboard(payment_id: str, *, premium: bool = True) -> InlineK
                     premium=premium,
                 )
             ]
+        ]
+    )
+
+
+def crypto_invoice_keyboard(pay_url: str, *, premium: bool = True) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Оплатить в Crypto Bot", url=pay_url)],
+            [button("Назад", "menu:wallet", icon="home", premium=premium)],
         ]
     )
 
@@ -248,6 +257,20 @@ def watermark_keyboard(settings: UserSettings, *, premium: bool = True) -> Inlin
     ]
     rows = [
         [button("Изменить текст", "input:watermark", icon="pencil", premium=premium)],
+        [
+            button(
+                "Montserrat",
+                "set:watermark_font:montserrat",
+                style="success" if settings.watermark_font is WatermarkFont.MONTSERRAT else None,
+                premium=premium,
+            ),
+            button(
+                "Space Mono",
+                "set:watermark_font:space_mono",
+                style="success" if settings.watermark_font is WatermarkFont.SPACE_MONO else None,
+                premium=premium,
+            ),
+        ],
         [
             button(
                 "Отключить",

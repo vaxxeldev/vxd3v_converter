@@ -7,6 +7,7 @@ from app.models.media import (
     SourceAsset,
     StickerKind,
     UserSettings,
+    WatermarkFont,
     WatermarkPosition,
 )
 
@@ -19,6 +20,6 @@ __all__ = [
     "SourceAsset",
     "StickerKind",
     "UserSettings",
+    "WatermarkFont",
     "WatermarkPosition",
 ]
-

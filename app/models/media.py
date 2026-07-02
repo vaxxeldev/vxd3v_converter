@@ -27,6 +27,11 @@ class WatermarkPosition(StrEnum):
     BOTTOM_RIGHT = "bottom_right"
 
 
+class WatermarkFont(StrEnum):
+    MONTSERRAT = "montserrat"
+    SPACE_MONO = "space_mono"
+
+
 class StickerKind(StrEnum):
     STATIC = "static"
     TGS = "tgs"
@@ -48,7 +53,8 @@ class UserSettings:
     emoji_color: str | None = None
     watermark_text: str | None = None
     watermark_position: WatermarkPosition = WatermarkPosition.BOTTOM_RIGHT
-    watermark_font_scale: float = 0.04
+    watermark_font: WatermarkFont = WatermarkFont.MONTSERRAT
+    watermark_font_scale: float = 0.08
 
 
 @dataclass(slots=True, frozen=True)

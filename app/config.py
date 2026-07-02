@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse
 
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -27,6 +28,8 @@ class Settings(BaseSettings):
     ffprobe_bin: str = "ffprobe"
     rlottie_renderer_bin: str = "/usr/local/bin/tgs-renderer"
     font_file: Path = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+    montserrat_font_file: Path = Path("/usr/share/fonts/truetype/vxd3v/Montserrat-Regular.ttf")
+    space_mono_font_file: Path = Path("/usr/share/fonts/truetype/vxd3v/SpaceMono-Regular.ttf")
     log_level: str = "INFO"
     max_input_bytes: int = Field(default=20 * 1024 * 1024, ge=1)
     max_output_bytes: int = Field(default=49 * 1024 * 1024, ge=1)
@@ -41,6 +44,10 @@ class Settings(BaseSettings):
     direct_payment_bank: str = "ВТБ"
     direct_payment_requisites: SecretStr | None = None
     direct_payment_recipient: str | None = None
+    crypto_pay_token: SecretStr | None = None
+    crypto_pay_api_url: str = "https://pay.crypt.bot/api"
+    crypto_invoice_expires_seconds: int = Field(default=3600, ge=60, le=2_678_400)
+    crypto_poll_seconds: int = Field(default=10, ge=5, le=300)
 
     @field_validator("log_level")
     @classmethod
@@ -48,6 +55,18 @@ class Settings(BaseSettings):
         normalized = value.upper()
         if normalized not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
             raise ValueError("unsupported LOG_LEVEL")
+        return normalized
+
+    @field_validator("crypto_pay_api_url")
+    @classmethod
+    def validate_crypto_pay_api_url(cls, value: str) -> str:
+        normalized = value.rstrip("/")
+        parsed = urlparse(normalized)
+        if parsed.scheme != "https" or parsed.hostname not in {
+            "pay.crypt.bot",
+            "testnet-pay.crypt.bot",
+        }:
+            raise ValueError("unsupported Crypto Pay API URL")
         return normalized
 
 

@@ -13,6 +13,7 @@ from app.models import (
     SourceAsset,
     StickerKind,
     UserSettings,
+    WatermarkFont,
     WatermarkPosition,
 )
 
@@ -27,6 +28,7 @@ _UPDATABLE_FIELDS = {
     "emoji_color",
     "watermark_text",
     "watermark_position",
+    "watermark_font",
 }
 
 
@@ -98,6 +100,11 @@ class SettingsRepository:
             await connection.execute("ALTER TABLE user_settings ADD COLUMN username TEXT")
             await connection.execute(
                 "CREATE INDEX IF NOT EXISTS user_settings_username ON user_settings(username)"
+            )
+        if "watermark_font" not in columns:
+            await connection.execute(
+                "ALTER TABLE user_settings ADD COLUMN watermark_font TEXT "
+                "NOT NULL DEFAULT 'montserrat'"
             )
 
     async def remember_username(self, user_id: int, username: str | None) -> None:
@@ -351,4 +358,5 @@ class SettingsRepository:
             emoji_color=row["emoji_color"],
             watermark_text=row["watermark_text"],
             watermark_position=WatermarkPosition(row["watermark_position"]),
+            watermark_font=WatermarkFont(row["watermark_font"]),
         )

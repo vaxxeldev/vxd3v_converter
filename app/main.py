@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 
 from aiogram import Bot, Dispatcher
@@ -16,6 +17,7 @@ from app.bot.payment_handlers import router as payment_router
 from app.config import Settings, get_settings
 from app.repositories import PaymentRepository, SettingsRepository
 from app.services.conversion import ConversionService
+from app.services.crypto_pay import CryptoPaymentService
 from app.services.media_probe import MediaProbe
 from app.services.media_renderer import MediaRenderer
 from app.services.process_runner import ProcessRunner
@@ -57,6 +59,7 @@ async def main() -> None:
     )
     banner_service = BannerService(settings, repository)
     panel = PanelService(bot, repository, settings, banner_service)
+    crypto_payments = CryptoPaymentService(settings, payment_repository)
     dispatcher = Dispatcher()
     dispatcher.include_router(payment_router)
     dispatcher.include_router(router)
@@ -66,6 +69,7 @@ async def main() -> None:
             BotCommand(command="cancel", description="Отменить ввод настройки"),
         ]
     )
+    crypto_task = asyncio.create_task(crypto_payments.run(bot))
     try:
         await dispatcher.start_polling(
             bot,
@@ -75,9 +79,13 @@ async def main() -> None:
             conversion=conversion,
             panel=panel,
             app_settings=settings,
+            crypto_payments=crypto_payments,
             allowed_updates=dispatcher.resolve_used_update_types(),
         )
     finally:
+        crypto_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await crypto_task
         await bot.session.close()
 
 
