@@ -97,6 +97,12 @@ class BotStatistics:
     referrals_invited: int
     referrals_activated: int
     referral_rewards_kopecks: int
+    users_reachable: int
+    users_blocked: int
+    broadcasts_completed: int
+    broadcast_delivered: int
+    broadcast_blocked: int
+    broadcast_failed: int
 
     @property
     def successful_render_percent(self) -> float:
@@ -719,6 +725,7 @@ class PaymentRepository:
 
     async def statistics(self, admin_id: int) -> BotStatistics:
         async with aiosqlite.connect(self._database_path) as connection:
+            await connection.execute("BEGIN")
 
             async def scalar(query: str, parameters: tuple[object, ...] = ()) -> int:
                 cursor = await connection.execute(query, parameters)
@@ -795,6 +802,29 @@ class PaymentRepository:
                 "WHERE referrer_user_id <> ?",
                 (admin_id,),
             )
+            users_reachable = await scalar(
+                "SELECT COUNT(*) FROM user_settings WHERE user_id <> ? "
+                "AND delivery_status <> 'blocked'",
+                (admin_id,),
+            )
+            users_blocked = await scalar(
+                "SELECT COUNT(*) FROM user_settings WHERE user_id <> ? "
+                "AND delivery_status = 'blocked'",
+                (admin_id,),
+            )
+            broadcasts_completed = await scalar(
+                "SELECT COUNT(*) FROM broadcast_jobs WHERE status = 'completed'"
+            )
+            broadcast_delivered = await scalar(
+                "SELECT COALESCE(SUM(sent), 0) FROM broadcast_jobs"
+            )
+            broadcast_blocked = await scalar(
+                "SELECT COALESCE(SUM(blocked), 0) FROM broadcast_jobs"
+            )
+            broadcast_failed = await scalar(
+                "SELECT COALESCE(SUM(failed), 0) FROM broadcast_jobs"
+            )
+            await connection.commit()
         return BotStatistics(
             users_total,
             users_today,
@@ -811,6 +841,12 @@ class PaymentRepository:
             referrals_invited,
             referrals_activated,
             referral_rewards,
+            users_reachable,
+            users_blocked,
+            broadcasts_completed,
+            broadcast_delivered,
+            broadcast_blocked,
+            broadcast_failed,
         )
 
     async def refund_interrupted_renders(self) -> int:

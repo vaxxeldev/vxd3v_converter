@@ -11,6 +11,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, ErrorEvent, FSInputFile, Message
 
+from app.bot.admin import process_broadcast_input, show_admin_statistics
 from app.bot.banners import BannerService
 from app.bot.keyboards import (
     back_keyboard,
@@ -30,7 +31,7 @@ from app.bot.sources import extract_sources
 from app.bot.texts import icon, main_text, screen_text
 from app.config import Settings
 from app.models import BackgroundKind, UserSettings, WatermarkFont, WatermarkPosition
-from app.repositories import PaymentRepository, SettingsRepository
+from app.repositories import BroadcastRepository, PaymentRepository, SettingsRepository
 from app.services.conversion import ConversionService, RenderedMedia
 from app.services.crypto_pay import CryptoPaymentService
 from app.services.errors import ConversionError, InsufficientBalanceError, PaymentStateError
@@ -192,9 +193,9 @@ async def show_referral(
         "<b>Твоя ссылка:</b>\n"
         f"<blockquote>{html.escape(referral_link)}</blockquote>\n\n"
         "<b>Как это работает:</b>\n"
-        "<blockquote>• друг переходит по ссылке\n\n"
-        "• пополняет баланс от <b>50 ₽</b>\n\n"
-        "• ты получаешь <b>20 ₽</b>\n"
+        "<blockquote>• друг переходит по ссылке\n"
+        "• пополняет баланс от <b>50₽</b>\n"
+        "• ты получаешь <b>20₽</b>\n"
         "• дальше — <b>15%</b> с каждого его пополнения</blockquote>\n\n"
         f"<b>Приглашено:</b> {summary.invited}\n"
         f"<b>Активировано:</b> {summary.activated}\n"
@@ -558,6 +559,7 @@ async def process_message(
     bot: Bot,
     repository: SettingsRepository,
     payment_repository: PaymentRepository,
+    broadcast_repository: BroadcastRepository,
     conversion: ConversionService,
     panel: PanelService,
     app_settings: Settings,
@@ -566,10 +568,15 @@ async def process_message(
     if not message.from_user:
         return
     user_id = message.from_user.id
+    if await process_broadcast_input(message, bot, broadcast_repository, app_settings):
+        return
     await repository.remember_username(user_id, message.from_user.username)
     command_text = (message.text or "").strip().casefold()
     if command_text.startswith(".стата"):
-        await _process_admin_statistics(message, payment_repository, app_settings)
+        if command_text != ".стата":
+            await message.answer("Формат: <code>.стата</code>")
+        else:
+            await show_admin_statistics(message, payment_repository, app_settings)
         return
     if command_text.startswith(".пополнить"):
         await _process_admin_credit(
@@ -645,47 +652,6 @@ async def process_message(
         raise
     await payment_repository.complete_render(order.id)
     await _show_main(user_id, user_id, repository, panel)
-
-
-async def _process_admin_statistics(
-    message: Message,
-    payment_repository: PaymentRepository,
-    app_settings: Settings,
-) -> None:
-    if not message.from_user or message.from_user.id != app_settings.admin_id:
-        await message.answer("Команда недоступна.")
-        return
-    if (message.text or "").strip().casefold() != ".стата":
-        await message.answer("Формат: <code>.стата</code>")
-        return
-    stats = await payment_repository.statistics(message.from_user.id)
-    real_topups = stats.direct_topups_kopecks + stats.crypto_topups_kopecks
-    await message.answer(
-        "<b>СТАТИСТИКА VXD3V</b>\n\n"
-        "<b>Аудитория</b>\n"
-        f"Пользователей: <code>{stats.users_total}</code>\n"
-        f"Новых сегодня: <code>{stats.users_today}</code>\n"
-        f"Новых за 7 дней: <code>{stats.users_seven_days}</code>\n\n"
-        "<b>Рендеры</b>\n"
-        f"Успешных всего: <code>{stats.renders_completed}</code>\n"
-        f"Сегодня: <code>{stats.renders_today}</code>\n"
-        f"За 7 дней: <code>{stats.renders_seven_days}</code>\n"
-        f"С возвратом: <code>{stats.renders_refunded}</code>\n"
-        f"Успешность: <code>{stats.successful_render_percent:.1f}%</code>\n"
-        f"На пользователя: <code>{stats.renders_per_user:.2f}</code>\n\n"
-        "<b>Финансы</b>\n"
-        f"Баланс пользователей: <code>{format_rubles(stats.countable_balance_kopecks)}</code>\n"
-        f"Реальные пополнения: <code>{format_rubles(real_topups)}</code>\n"
-        f"Прямые переводы: <code>{format_rubles(stats.direct_topups_kopecks)}</code>\n"
-        f"Crypto Bot: <code>{format_rubles(stats.crypto_topups_kopecks)}</code>\n\n"
-        "<b>Реферальная система</b>\n"
-        f"Приглашено: <code>{stats.referrals_invited}</code>\n"
-        f"Активировано: <code>{stats.referrals_activated}</code>\n"
-        f"Начислено: <code>{format_rubles(stats.referral_rewards_kopecks)}</code>\n\n"
-        "<b>Ожидают обработки</b>\n"
-        f"Чеков: <code>{stats.payments_awaiting_review}</code>\n"
-        f"Crypto-счетов: <code>{stats.crypto_invoices_active}</code>"
-    )
 
 
 async def _process_admin_credit(

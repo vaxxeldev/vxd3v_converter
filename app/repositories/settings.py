@@ -116,6 +116,21 @@ class SettingsRepository:
                 "ALTER TABLE user_settings ADD COLUMN admin_credit_balance_kopecks "
                 "INTEGER NOT NULL DEFAULT 0 CHECK(admin_credit_balance_kopecks >= 0)"
             )
+        if "last_active_at" not in columns:
+            await connection.execute("ALTER TABLE user_settings ADD COLUMN last_active_at TEXT")
+            await connection.execute(
+                "UPDATE user_settings SET last_active_at = COALESCE(updated_at, created_at) "
+                "WHERE last_active_at IS NULL"
+            )
+        if "delivery_status" not in columns:
+            await connection.execute(
+                "ALTER TABLE user_settings ADD COLUMN delivery_status TEXT "
+                "NOT NULL DEFAULT 'unknown'"
+            )
+        if "delivery_checked_at" not in columns:
+            await connection.execute(
+                "ALTER TABLE user_settings ADD COLUMN delivery_checked_at TEXT"
+            )
 
     async def remember_username(self, user_id: int, username: str | None) -> None:
         await self.get(user_id)
@@ -128,7 +143,8 @@ class SettingsRepository:
                     (normalized, user_id),
                 )
             await connection.execute(
-                "UPDATE user_settings SET username = ? WHERE user_id = ?",
+                "UPDATE user_settings SET username = ?, last_active_at = CURRENT_TIMESTAMP, "
+                "delivery_status = 'active' WHERE user_id = ?",
                 (normalized, user_id),
             )
             await connection.commit()

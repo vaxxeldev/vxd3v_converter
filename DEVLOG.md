@@ -115,3 +115,14 @@
 - Made referral rewards atomic and idempotent for direct transfers and Crypto Bot payments.
 - Added duplicate receipt detection, limits for pending payments and per-user update throttling.
 - Upgraded aiogram to 3.29.1 and verified dependencies against known vulnerability advisories.
+
+## 2026-07-03 — Persistent owner broadcasts
+
+- Added an owner-only broadcast wizard to `.стата` with text entities, optional media,
+  optional HTTPS button, premium emoji, preview and explicit confirmation.
+- Added persistent SQLite drafts, jobs and per-recipient delivery state with restart recovery,
+  duplicate-launch protection, Telegram rate-limit handling and bounded network retries.
+- Added reachable/blocked audience counters and aggregate broadcast delivery statistics without
+  exposing recipient IDs or broadcast contents in status messages and application logs.
+- Added tests for recipient selection, duplicate prevention, recovery, fatal content failures,
+  aggregate statistics and formatted payload delivery.

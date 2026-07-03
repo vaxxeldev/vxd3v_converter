@@ -9,6 +9,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import BotCommand
 
+from app.bot.admin import router as admin_router
 from app.bot.banners import BannerService
 from app.bot.downloader import AiogramFileDownloader
 from app.bot.handlers import router
@@ -16,7 +17,8 @@ from app.bot.middleware import UserRateLimitMiddleware
 from app.bot.panel import PanelService
 from app.bot.payment_handlers import router as payment_router
 from app.config import Settings, get_settings
-from app.repositories import PaymentRepository, SettingsRepository
+from app.repositories import BroadcastRepository, PaymentRepository, SettingsRepository
+from app.services.broadcast import BroadcastService
 from app.services.conversion import ConversionService
 from app.services.crypto_pay import CryptoPaymentService
 from app.services.media_probe import MediaProbe
@@ -46,6 +48,8 @@ async def main() -> None:
     await repository.initialize()
     payment_repository = PaymentRepository(settings.database_path)
     await payment_repository.initialize()
+    broadcast_repository = BroadcastRepository(settings.database_path)
+    await broadcast_repository.initialize()
     await payment_repository.refund_interrupted_renders()
     runner = ProcessRunner()
     probe = MediaProbe(settings, runner)
@@ -61,10 +65,12 @@ async def main() -> None:
     banner_service = BannerService(settings, repository)
     panel = PanelService(bot, repository, settings, banner_service)
     crypto_payments = CryptoPaymentService(settings, payment_repository)
+    broadcasts = BroadcastService(broadcast_repository)
     dispatcher = Dispatcher()
     rate_limiter = UserRateLimitMiddleware()
     dispatcher.message.outer_middleware(rate_limiter)
     dispatcher.callback_query.outer_middleware(rate_limiter)
+    dispatcher.include_router(admin_router)
     dispatcher.include_router(payment_router)
     dispatcher.include_router(router)
     await bot.set_my_commands(
@@ -74,12 +80,14 @@ async def main() -> None:
         ]
     )
     crypto_task = asyncio.create_task(crypto_payments.run(bot))
+    broadcast_task = asyncio.create_task(broadcasts.run(bot))
     try:
         await dispatcher.start_polling(
             bot,
             repository=repository,
             settings_repository=repository,
             payment_repository=payment_repository,
+            broadcast_repository=broadcast_repository,
             conversion=conversion,
             panel=panel,
             banner_service=banner_service,
@@ -89,8 +97,11 @@ async def main() -> None:
         )
     finally:
         crypto_task.cancel()
+        broadcast_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await crypto_task
+        with contextlib.suppress(asyncio.CancelledError):
+            await broadcast_task
         await bot.session.close()
 
 
