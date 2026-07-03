@@ -187,7 +187,7 @@ async def show_referral(
     share_url = (
         "https://t.me/share/url?url="
         f"{quote(referral_link, safe='')}&text="
-        f"{quote('Попробуй VXD3V CONVERTER по моей ссылке', safe='')}"
+        f"{quote('Собираю пиздатое оформление в VXD3V CONVERTER — заходи по ссылке', safe='')}"
     )
     body = (
         "<b>Твоя ссылка:</b>\n"
